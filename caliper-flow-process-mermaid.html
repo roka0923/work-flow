@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caliper Flow - 전체 프로세스 플로우</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 50px 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.95;
+            margin-bottom: 10px;
+        }
+        
+        .header .tagline {
+            font-size: 0.95em;
+            opacity: 0.8;
+            font-style: italic;
+        }
+        
+        .content {
+            padding: 50px 40px;
+        }
+        
+        .section {
+            margin-bottom: 50px;
+        }
+        
+        .section-title {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-bottom: 30px;
+        }
+        
+        .intro-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .intro-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .intro-card h3 {
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+        
+        .intro-card p {
+            font-size: 0.95em;
+            line-height: 1.6;
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        
+        .feature-card {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 4px;
+        }
+        
+        .feature-card h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .feature-card p {
+            color: #666;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+        
+        .process-timeline {
+            display: flex;
+            gap: 20px;
+            margin: 30px 0;
+            overflow-x: auto;
+            padding: 20px 0;
+        }
+        
+        .timeline-item {
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 20px;
+            min-width: 200px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .timeline-item:not(:last-child)::after {
+            content: '→';
+            position: absolute;
+            right: -30px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.5em;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .timeline-item h5 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .timeline-item p {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .tech-stack {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .tech-item {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        
+        .tech-item h5 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        
+        .tech-item ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .tech-item li {
+            color: #666;
+            padding: 8px 0;
+            font-size: 0.9em;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .tech-item li:last-child {
+            border-bottom: none;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .stat-label {
+            font-size: 0.95em;
+            opacity: 0.9;
+        }
+        
+        .benefits {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        
+        .benefit-item {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .benefit-icon {
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+        
+        .benefit-text h4 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .benefit-text p {
+            color: #666;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 30px;
+            background: #f8f9fa;
+            color: #999;
+            font-size: 0.9em;
+        }
+        
+        .roadmap {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .roadmap-item {
+            background: white;
+            border-left: 4px solid;
+            padding: 20px;
+            border-radius: 4px;
+        }
+        
+        .roadmap-item.phase1 { border-left-color: #4CAF50; }
+        .roadmap-item.phase2 { border-left-color: #2196F3; }
+        .roadmap-item.phase3 { border-left-color: #FF9800; }
+        .roadmap-item.phase4 { border-left-color: #9C27B0; }
+        
+        .roadmap-item h4 {
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        
+        .roadmap-item ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .roadmap-item li {
+            color: #666;
+            font-size: 0.9em;
+            padding: 5px 0;
+        }
+        
+        .roadmap-item li:before {
+            content: '✓ ';
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .section-title {
+                font-size: 1.3em;
+            }
+            
+            .process-timeline {
+                gap: 10px;
+            }
+            
+            .timeline-item:not(:last-child)::after {
+                right: -15px;
+                font-size: 1.2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏭 Caliper Flow</h1>
+            <p>생산 일정 관리 시스템</p>
+            <p class="tagline">칼리퍼 재제조 공정의 스마트한 생산 관리 솔루션</p>
+        </div>
+        
+        <div class="content">
+            <!-- 프로젝트 개요 -->
+            <div class="section">
+                <h2 class="section-title">📋 프로젝트 개요</h2>
+                <div class="intro-grid">
+                    <div class="intro-card">
+                        <h3>🎯 목표</h3>
+                        <p>칼리퍼 재제조 공정의 생산 현황을 실시간으로 모니터링하고 생산 지연을 최소화</p>
+                    </div>
+                    <div class="intro-card">
+                        <h3>🏢 대상</h3>
+                        <p>생산팀, 현장 직원, 경영진을 위한 전사적 생산 관리 시스템</p>
+                    </div>
+                    <div class="intro-card">
+                        <h3>💼 가치</h3>
+                        <p>생산 시간 15% 단축, 오류 40% 감소, 효율성 극대화</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 주요 기능 -->
+            <div class="section">
+                <h2 class="section-title">🎯 주요 기능</h2>
+                <div class="features">
+                    <div class="feature-card">
+                        <h4>🏠 대시보드</h4>
+                        <p>실시간 생산 현황판 - 진행 중, 완료, 긴급 작업 한눈에 파악</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>✍️ 작업 입력</h4>
+                        <p>품목 검색, 수량 입력, 긴급도 선택, 메모 작성으로 신규 작업 등록</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>📋 공정 관리</h4>
+                        <p>5개 공정(신규→분해→도금→조립→배송) 상태를 동적으로 추적</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>⚙️ 설정</h4>
+                        <p>직원 관리, 앱 설정, 데이터 백업/복원 기능</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 전체 프로세스 플로우 -->
+            <div class="section">
+                <h2 class="section-title">🔄 전체 프로세스 플로우</h2>
+                <div class="mermaid">
+                    flowchart TD
+                        Start(["🚀 앱 시작"]) --> Nav{"네비게이션<br/>선택"}
+                        
+                        Nav -->|대시보드| Dashboard["🏠 대시보드<br/>현황 보기"]
+                        Nav -->|작업 지시| TaskInput["✍️ 새 작업 지시<br/>작업 입력"]
+                        Nav -->|공정 관리| Process["📋 공정 관리<br/>상태 추적"]
+                        Nav -->|설정| Settings["⚙️ 설정<br/>앱 구성"]
+                        
+                        Dashboard --> DashView["📊 생산 현황판<br/>• 진행 중<br/>• 완료<br/>• 긴급"]
+                        DashView --> DashList["📑 공정별 목록<br/>5개 공정"]
+                        DashList --> LocalLoad["💾 localStorage<br/>데이터 로드"]
+                        
+                        TaskInput --> Search["🔍 품목 검색"]
+                        Search --> QtyInput["📝 수량/긴급도 입력"]
+                        QtyInput --> Memo["💬 메모 추가"]
+                        Memo --> Register["✅ 작업 등록"]
+                        Register --> SaveLocal["💾 localStorage 저장"]
+                        
+                        Process --> P1["Step 1: 신규수주"]
+                        Process --> P2["Step 2: 분해대기"]
+                        Process --> P3["Step 3: 도금완료"]
+                        Process --> P4["Step 4: 조립대기"]
+                        Process --> P5["Step 5: 배송준료"]
+                        
+                        P1 --> Update1["상태 업데이트"]
+                        P2 --> Update2["상태 업데이트"]
+                        P3 --> Update3["상태 업데이트"]
+                        P4 --> Update4["상태 업데이트"]
+                        P5 --> Update5["상태 업데이트"]
+                        
+                        Update1 --> Next["→ 다음 공정 이동"]
+                        Update2 --> Next
+                        Update3 --> Next
+                        Update4 --> Next
+                        Update5 --> Next
+                        
+                        Settings --> Staff["👥 직원 관리"]
+                        Settings --> App["🎨 앱 설정"]
+                        Settings --> Data["💾 데이터 관리"]
+                        
+                        SaveLocal --> Sync["🔄 동기화"]
+                        Next --> Sync
+                        
+                        Sync --> Dashboard
+                        
+                        style Start fill:#4CAF50,color:#fff
+                        style Dashboard fill:#2196F3,color:#fff
+                        style TaskInput fill:#9C27B0,color:#fff
+                        style Process fill:#FF9800,color:#fff
+                        style Settings fill:#607D8B,color:#fff
+                </div>
+            </div>
+            
+            <!-- 공정 상태 다이어그램 -->
+            <div class="section">
+                <h2 class="section-title">📊 공정 상태 흐름도</h2>
+                <div class="mermaid">
+                    flowchart LR
+                        Start(["작업 시작"]) -->|신규 작업| P1["📋 PENDING<br/>신규수주"]
+                        
+                        P1 -->|분해 배정| P2["🔧 DISASSEMBLY<br/>분해대기"]
+                        
+                        P2 -->|분해 완료| P3["⚡ PLATING<br/>도금 작업"]
+                        
+                        P3 -->|도금 완료| P4["✨ PLATED<br/>도금완료"]
+                        
+                        P4 -->|조립 배정| P5["🔩 ASSEMBLY<br/>조립대기"]
+                        
+                        P5 -->|조립 완료| P6["🔍 INSPECTION<br/>검사"]
+                        
+                        P6 -->|검사 통과| P7["📦 READY<br/>배송준료"]
+                        
+                        P7 -->|배송 완료| Complete(["✅ COMPLETED<br/>작업 완료"])
+                        
+                        P6 -->|불량 발견| Repair["🔧 REPAIR<br/>재작업"]
+                        Repair --> P6
+                        
+                        style Start fill:#4CAF50,color:#fff,stroke:#2E7D32,stroke-width:3px
+                        style P1 fill:#FFF3E0,color:#000
+                        style P2 fill:#E3F2FD,color:#000
+                        style P3 fill:#F3E5F5,color:#000
+                        style P4 fill:#E8F5E9,color:#000
+                        style P5 fill:#FFF9C4,color:#000
+                        style P6 fill:#FCE4EC,color:#000
+                        style P7 fill:#E0F2F1,color:#000
+                        style Repair fill:#FFEBEE,color:#000
+                        style Complete fill:#4CAF50,color:#fff,stroke:#2E7D32,stroke-width:3px
+                </div>
+            </div>
+            
+            <!-- 프로젝트 구조 -->
+            <div class="section">
+                <h2 class="section-title">🏗️ 프로젝트 구조</h2>
+                <div class="tech-stack">
+                    <div class="tech-item">
+                        <h5>📂 폴더 구조</h5>
+                        <ul>
+                            <li>📂 src/hooks/ - Custom Hooks</li>
+                            <li>📂 src/components/ - React 컴포넌트</li>
+                            <li>📂 src/styles/ - CSS 파일 (9개)</li>
+                            <li>📂 src/config/ - 설정 파일</li>
+                            <li>📄 App.jsx - 메인 컴포넌트</li>
+                            <li>📄 main.jsx - 진입점</li>
+                        </ul>
+                    </div>
+                    <div class="tech-item">
+                        <h5>⚙️ 기술 스택</h5>
+                        <ul>
+                            <li>React 18+</li>
+                            <li>Vite (번들러)</li>
+                            <li>Custom Hooks</li>
+                            <li>CSS Modules (9개)</li>
+                            <li>localStorage</li>
+                            <li>Netlify (배포)</li>
+                        </ul>
+                    </div>
+                    <div class="tech-item">
+                        <h5>🔧 Custom Hooks</h5>
+                        <ul>
+                            <li>useJobs - 작업 관리</li>
+                            <li>useStaff - 직원 관리</li>
+                            <li>useLocalStorage - 데이터 영속성</li>
+                            <li>각 Hook 단독 테스트 가능</li>
+                            <li>재사용성 극대화</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 성능 지표 -->
+            <div class="section">
+                <h2 class="section-title">📈 예상 성능 개선</h2>
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-number">15%</div>
+                        <div class="stat-label">생산 시간 단축</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">40%</div>
+                        <div class="stat-label">오류 감소</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">100%</div>
+                        <div class="stat-label">자동화 달성</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">90%</div>
+                        <div class="stat-label">시간 단축</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 비즈니스 이점 -->
+            <div class="section">
+                <h2 class="section-title">💡 비즈니스 이점</h2>
+                <div class="benefits">
+                    <div class="benefit-item">
+                        <div class="benefit-icon">✓</div>
+                        <div class="benefit-text">
+                            <h4>생산 효율성</h4>
+                            <p>실시간 현황 파악으로 의사결정 속도 향상</p>
+                        </div>
+                    </div>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">✓</div>
+                        <div class="benefit-text">
+                            <h4>오류 감소</h4>
+                            <p>자동화로 인한 수작업 오류 최소화</p>
+                        </div>
+                    </div>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">✓</div>
+                        <div class="benefit-text">
+                            <h4>우선순위 관리</h4>
+                            <p>긴급 작업 자동 분류로 효율적 배분</p>
+                        </div>
+                    </div>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">✓</div>
+                        <div class="benefit-text">
+                            <h4>데이터 추적</h4>
+                            <p>모든 공정의 이력이 기록되어 분석 가능</p>
+                        </div>
+                    </div>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">✓</div>
+                        <div class="benefit-text">
+                            <h4>팀 협업</h4>
+                            <p>모든 팀이 동일한 정보 기반으로 작업</p>
+                        </div>
+                    </div>
+                    <div class="benefit-item">
+                        <div class="benefit-icon">✓</div>
+                        <div class="benefit-text">
+                            <h4>지속적 개선</h4>
+                            <p>데이터 기반 의사결정으로 지속적 최적화</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 개발 로드맵 -->
+            <div class="section">
+                <h2 class="section-title">🚀 개발 로드맵</h2>
+                <div class="roadmap">
+                    <div class="roadmap-item phase1">
+                        <h4>Phase 1: 기본 기능 완성</h4>
+                        <ul>
+                            <li>대시보드 구현</li>
+                            <li>작업 입력 폼</li>
+                            <li>공정 관리 UI</li>
+                            <li>localStorage 연동</li>
+                        </ul>
+                    </div>
+                    <div class="roadmap-item phase2">
+                        <h4>Phase 2: 모듈화 & 최적화</h4>
+                        <ul>
+                            <li>Custom Hooks 추출</li>
+                            <li>컴포넌트 최적화</li>
+                            <li>CSS 분리 (9개 파일)</li>
+                            <li>문서화 작성</li>
+                        </ul>
+                    </div>
+                    <div class="roadmap-item phase3">
+                        <h4>Phase 3: 배포 & 모니터링</h4>
+                        <ul>
+                            <li>Staging 테스트</li>
+                            <li>Production 배포</li>
+                            <li>사용자 피드백</li>
+                            <li>지속적 최적화</li>
+                        </ul>
+                    </div>
+                    <div class="roadmap-item phase4">
+                        <h4>Phase 4: 확장 기능</h4>
+                        <ul>
+                            <li>리포팅 & 분석</li>
+                            <li>모바일 앱</li>
+                            <li>API 연동</li>
+                            <li>예측 분석</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 프로젝트 통계 -->
+            <div class="section">
+                <h2 class="section-title">📊 프로젝트 통계</h2>
+                <div class="intro-grid">
+                    <div class="intro-card">
+                        <h3>4개 페이지</h3>
+                        <p>대시보드, 작업 지시, 공정 관리, 설정</p>
+                    </div>
+                    <div class="intro-card">
+                        <h3>3개 Custom Hooks</h3>
+                        <p>useJobs, useStaff, useLocalStorage</p>
+                    </div>
+                    <div class="intro-card">
+                        <h3>9개 CSS 파일</h3>
+                        <p>모듈화된 스타일 관리</p>
+                    </div>
+                    <div class="intro-card">
+                        <h3>5개 공정 단계</h3>
+                        <p>신규→분해→도금→조립→배송</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>🏭 Caliper Flow - 생산 일정 관리 시스템</p>
+            <p>배포 URL: https://daehansa-workflow1.netlify.app/</p>
+            <p>© 2024 대한사 (주). All rights reserved.</p>
+        </footer>
+    </div>
+    
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+        mermaid.contentLoaded();
+    </script>
+</body>
+</html>
