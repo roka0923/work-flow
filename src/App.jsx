@@ -15,6 +15,8 @@ function App() {
     const {
         jobs,
         deletedJobs,
+        loading,
+        error,
         addJob,
         editJob,
         deleteJob,
@@ -24,6 +26,9 @@ function App() {
         resetJobs,
         updateJobStatus
     } = useJobs();
+
+    if (loading) return <div className="loading-screen">데이터를 불러오는 중...</div>;
+    if (error) return <div className="error-screen">{error}</div>;
 
     const {
         staffNames,
