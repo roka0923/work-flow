@@ -56,7 +56,10 @@ export default function JobCard({
                                     {isPair ? group.base : firstItem.model} {isPair && <span style={{ fontSize: '13px', color: 'var(--primary)', marginLeft: '8px' }}>(L+R 세트)</span>}
                                 </h3>
                                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={12} /> {new Date(group.requestDate).toLocaleString()}</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <Clock size={12} />
+                                        {group.requestDate ? new Date(group.requestDate).toLocaleString() : '날짜 정보 없음'}
+                                    </div>
                                     {group.memo && (
                                         <div style={{
                                             marginTop: '8px',

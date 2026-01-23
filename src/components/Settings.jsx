@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2 } from 'lucide-react';
 import { ref, set, update } from 'firebase/database';
 import { rtdb } from '../firebase/config';

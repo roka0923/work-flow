@@ -48,7 +48,10 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         return statusKeys[lastCheckedIndex] === filter;
     });
 
-    const getBaseModel = (model) => model.replace(/\s+(LH|RH)$/i, '').trim();
+    const getBaseModel = (model) => {
+        if (!model) return '품목명 없음';
+        return model.replace(/\s+(LH|RH)$/i, '').trim();
+    };
 
     const groupMap = new Map();
     const groupedJobs = [];
@@ -127,58 +130,69 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         setSelectedGroups(newSelected);
     };
 
-    return (
-        <div className="animate-fade-in" style={{ paddingBottom: selectedGroups.size > 0 ? '100px' : '0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h1>공정 관리</h1>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    {selectedGroups.size > 0 && <button onClick={() => setSelectedGroups(new Set())} className="btn-secondary">선택 해제</button>}
-                    {filter && <button onClick={onClearFilter} className="btn-secondary">필터 해제 <X size={14} /></button>}
+    try {
+        return (
+            <div className="animate-fade-in" style={{ paddingBottom: selectedGroups.size > 0 ? '100px' : '0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h1>공정 관리</h1>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        {selectedGroups.size > 0 && <button onClick={() => setSelectedGroups(new Set())} className="btn-secondary">선택 해제</button>}
+                        {filter && <button onClick={onClearFilter} className="btn-secondary">필터 해제 <X size={14} /></button>}
+                    </div>
                 </div>
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                {stagesToShow.length === 0 ? (
-                    <div className="card text-center text-muted p-40">{filter ? '대기 중인 작업이 없습니다.' : '등록된 작업이 없습니다.'}</div>
-                ) : (
-                    stagesToShow.map(stage => (
-                        <div key={stage.key}>
-                            <div className="section-header" onClick={() => handleToggleStage(stage.key)} style={{ cursor: 'pointer' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={jobsByStage[stage.key].every(g => selectedGroups.has(g.key))}
-                                    readOnly
-                                    className="stage-checkbox"
-                                />
-                                <span>{stage.label}</span>
-                                <span className="badge">{jobsByStage[stage.key].length}건</span>
-                            </div>
-                            <div className="card-list">
-                                {jobsByStage[stage.key].map(group => (
-                                    <JobCard
-                                        key={group.key} group={group} isSelected={selectedGroups.has(group.key)}
-                                        onToggleSelection={(key) => { const n = new Set(selectedGroups); if (n.has(key)) n.delete(key); else n.add(key); setSelectedGroups(n); }}
-                                        onDelete={setDeleteTarget} onDetailClick={setSelectedJob} onStageClick={handleStageClick} stages={stages}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    {stagesToShow.length === 0 ? (
+                        <div className="card text-center text-muted p-40">{filter ? '대기 중인 작업이 없습니다.' : '등록된 작업이 없습니다.'}</div>
+                    ) : (
+                        stagesToShow.map(stage => (
+                            <div key={stage.key}>
+                                <div className="section-header" onClick={() => handleToggleStage(stage.key)} style={{ cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={jobsByStage[stage.key].every(g => selectedGroups.has(g.key))}
+                                        readOnly
+                                        className="stage-checkbox"
                                     />
-                                ))}
+                                    <span>{stage.label}</span>
+                                    <span className="badge">{jobsByStage[stage.key].length}건</span>
+                                </div>
+                                <div className="card-list">
+                                    {jobsByStage[stage.key].map(group => (
+                                        <JobCard
+                                            key={group.key} group={group} isSelected={selectedGroups.has(group.key)}
+                                            onToggleSelection={(key) => { const n = new Set(selectedGroups); if (n.has(key)) n.delete(key); else n.add(key); setSelectedGroups(n); }}
+                                            onDelete={setDeleteTarget} onDetailClick={setSelectedJob} onStageClick={handleStageClick} stages={stages}
+                                        />
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    ))
-                )}
+                        ))
+                    )}
+                </div>
+
+                <BatchActionBar selectedCount={selectedGroups.size} onAction={() => {
+                    const groups = groupedJobs.filter(g => selectedGroups.has(g.key));
+                    const validGroups = groups.filter(g => getNextStage(g.items[0]));
+                    if (validGroups.length > 0) setBatchConfirmTarget({ groups: validGroups, stageKey: getNextStage(validGroups[0].items[0]).key, label: getNextStage(validGroups[0].items[0]).label, count: validGroups.length });
+                }} />
+
+                <ProcessModals
+                    selectedJob={selectedJob} setSelectedJob={setSelectedJob} isEditing={isEditing} setIsEditing={setIsEditing} editData={editData} setEditData={setEditData} saveEdit={saveEdit} startEdit={startEdit}
+                    confirmTarget={confirmTarget} setConfirmTarget={setConfirmTarget} selectedStaff={selectedStaff} setSelectedStaff={setSelectedStaff} handleConfirmStatus={handleConfirmStatus} staffNames={staffNames}
+                    batchConfirmTarget={batchConfirmTarget} setBatchConfirmTarget={setBatchConfirmTarget} handleBatchConfirmStatus={handleBatchConfirmStatus}
+                    deleteTarget={deleteTarget} setDeleteTarget={setDeleteTarget} handleDelete={handleDelete} stages={stages}
+                />
             </div>
-
-            <BatchActionBar selectedCount={selectedGroups.size} onAction={() => {
-                const groups = groupedJobs.filter(g => selectedGroups.has(g.key));
-                const validGroups = groups.filter(g => getNextStage(g.items[0]));
-                if (validGroups.length > 0) setBatchConfirmTarget({ groups: validGroups, stageKey: getNextStage(validGroups[0].items[0]).key, label: getNextStage(validGroups[0].items[0]).label, count: validGroups.length });
-            }} />
-
-            <ProcessModals
-                selectedJob={selectedJob} setSelectedJob={setSelectedJob} isEditing={isEditing} setIsEditing={setIsEditing} editData={editData} setEditData={setEditData} saveEdit={saveEdit} startEdit={startEdit}
-                confirmTarget={confirmTarget} setConfirmTarget={setConfirmTarget} selectedStaff={selectedStaff} setSelectedStaff={setSelectedStaff} handleConfirmStatus={handleConfirmStatus} staffNames={staffNames}
-                batchConfirmTarget={batchConfirmTarget} setBatchConfirmTarget={setBatchConfirmTarget} handleBatchConfirmStatus={handleBatchConfirmStatus}
-                deleteTarget={deleteTarget} setDeleteTarget={setDeleteTarget} handleDelete={handleDelete} stages={stages}
-            />
-        </div>
-    );
+        );
+    } catch (err) {
+        console.error("ProcessList Render Error:", err);
+        return (
+            <div className="card" style={{ margin: '20px', padding: '20px', border: '1px solid var(--danger)' }}>
+                <h3 style={{ color: 'var(--danger)' }}>공정 목록을 표시하는 중 오류가 발생했습니다.</h3>
+                <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>{err.message}</p>
+                <button onClick={() => window.location.reload()} className="btn btn-primary" style={{ marginTop: '10px' }}>새로고침</button>
+            </div>
+        );
+    }
 }
