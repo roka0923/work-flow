@@ -18,7 +18,11 @@ export function useJobs() {
                     const jobsList = Object.keys(data).map(key => ({
                         id: key,
                         ...data[key]
-                    })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+                    })).sort((a, b) => {
+                        const timeA = typeof a.updatedAt === 'number' ? a.updatedAt : (a.updatedAt?.seconds ? a.updatedAt.seconds * 1000 : new Date(a.updatedAt).getTime() || 0);
+                        const timeB = typeof b.updatedAt === 'number' ? b.updatedAt : (b.updatedAt?.seconds ? b.updatedAt.seconds * 1000 : new Date(b.updatedAt).getTime() || 0);
+                        return timeB - timeA;
+                    });
                     setJobs(jobsList);
                 } else {
                     setJobs([]);
@@ -154,6 +158,8 @@ export function useJobs() {
     const updateJobStatus = async (targetIds, stage, staffName) => {
         try {
             const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
+            const statusKeys = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
+
             for (const id of ids) {
                 const job = jobs.find(j => j.id === id);
                 if (job) {
@@ -165,20 +171,39 @@ export function useJobs() {
                     updates['updatedAt'] = serverTimestamp();
 
                     if (isCompleting) {
+                        // 체크 (완료) 처리
                         const newHistory = [...(job.history || []), {
                             stage,
                             staffName,
                             timestamp: new Date().toISOString()
                         }];
                         updates['history'] = newHistory;
-                        // 만약 요청하신 stage 데이터 구조를 명시적으로 쓰고 싶다면 여기서 stage 업데이트 가능
                         updates['stage'] = stage;
+                    } else {
+                        // 체크 해제 처리: 해당 단계 이후의 모든 단계를 false로 전환
+                        const currentIndex = statusKeys.indexOf(stage);
+                        if (currentIndex !== -1) {
+                            for (let i = currentIndex; i < statusKeys.length; i++) {
+                                updates[`status/${statusKeys[i]}`] = false;
+                            }
+                        }
+
+                        // 히스토리에서 해당 단계 이후 기록 삭제
+                        const newHistory = (job.history || []).filter(h =>
+                            statusKeys.indexOf(h.stage) < currentIndex
+                        );
+                        updates['history'] = newHistory;
+
+                        // 현재 공정 단계 필드 업데이트
+                        const prevIndex = currentIndex - 1;
+                        updates['stage'] = prevIndex >= 0 ? statusKeys[prevIndex] : "신규추가";
                     }
 
                     await update(jobRef, updates);
                 }
             }
         } catch (err) {
+            console.error("Status Update Error:", err);
             setError("상태 업데이트 중 오류가 발생했습니다.");
         }
     };

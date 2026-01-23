@@ -26,9 +26,19 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
     const statusKeys = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
 
     const getJobStage = (job) => {
-        if (statusKeys.every(key => !job.status[key])) return 'new_added';
-        const lastCheckedIndex = statusKeys.map(k => job.status[k]).lastIndexOf(true);
-        return statusKeys[lastCheckedIndex] || 'new_added';
+        // 모든 공정이 완료된 경우
+        if (job.status && job.status.complete) return 'complete';
+
+        // 아직 아무것도 시작하지 않은 경우 (모든 상태가 false)
+        if (!job.status || statusKeys.every(key => !job.status[key])) return 'new_added';
+
+        // 첫 번째 미완료 공정 찾기 (해당 공정의 대기 목록으로 이동)
+        const firstIncompleteIndex = statusKeys.findIndex(key => !job.status[key]);
+
+        // 만약 모든 중간 단계가 완료되었는데 complete만 false라면 (이론상 발생 방지)
+        if (firstIncompleteIndex === -1) return 'complete';
+
+        return statusKeys[firstIncompleteIndex];
     };
 
     const getNextStage = (job) => {
