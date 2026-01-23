@@ -18,19 +18,20 @@ export function useJobs() {
                     const jobsList = Object.keys(data).map(key => ({
                         id: key,
                         ...data[key]
-                    })).sort((a, b) => b.updatedAt - a.updatedAt);
+                    })).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
                     setJobs(jobsList);
                 } else {
                     setJobs([]);
                 }
-                setLoading(false);
             } catch (err) {
                 console.error("Firebase Read Error:", err);
                 setError("데이터를 불러오는 중 오류가 발생했습니다.");
+            } finally {
                 setLoading(false);
             }
         }, (err) => {
-            setError(err.message);
+            console.error("Firebase Auth/Permission Error:", err);
+            setError("데이터 접근 권한이 없거나 설정이 올바르지 않습니다.");
             setLoading(false);
         });
 

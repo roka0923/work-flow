@@ -27,8 +27,20 @@ function App() {
         updateJobStatus
     } = useJobs();
 
-    if (loading) return <div className="loading-screen">데이터를 불러오는 중...</div>;
-    if (error) return <div className="error-screen">{error}</div>;
+    if (loading) return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: '1rem' }}>
+            <div className="loader"></div>
+            <p>데이터를 불러오는 중...</p>
+        </div>
+    );
+
+    if (error) return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', color: 'var(--danger-color)', textAlign: 'center', padding: '2rem' }}>
+            <h2>연결 오류</h2>
+            <p>{error}</p>
+            <button onClick={() => window.location.reload()} style={{ marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--primary-color)', color: 'white', border: 'none' }}>다시 시도</button>
+        </div>
+    );
 
     const {
         staffNames,
