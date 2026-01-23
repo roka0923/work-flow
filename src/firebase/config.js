@@ -13,8 +13,30 @@ const firebaseConfig = {
     appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Debug: Check environment variables
+const missingVars = Object.entries(firebaseConfig)
+    .filter(([key, value]) => !value)
+    .map(([key]) => `VITE_FIREBASE_${key.toUpperCase()}`);
+
+if (missingVars.length > 0) {
+    console.error("❌ Firebase 환경 변수가 누락되었습니다:", missingVars.join(", "));
+    console.log("현재 환경 변수 상태:", {
+        hasApiKey: !!firebaseConfig.apiKey,
+        hasDbUrl: !!firebaseConfig.databaseURL,
+        envMode: import.meta.env.MODE
+    });
+} else {
+    console.log("✅ Firebase 환경 변수가 정상적으로 로드되었습니다.");
+}
+
+let app;
+try {
+    // initialize Firebase
+    app = initializeApp(firebaseConfig);
+} catch (error) {
+    console.error("❌ Firebase 초기화 실패:", error);
+    throw new Error("Firebase 초기화 중 오류가 발생했습니다. 환경 변수 설정을 확인해 주세요.");
+}
 
 // initialize Services
 export const rtdb = getDatabase(app);
