@@ -27,6 +27,11 @@ function App() {
         updateJobStatus
     } = useJobs();
 
+    const {
+        staffNames,
+        setStaffNames
+    } = useStaff();
+
     if (loading) return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: '1rem' }}>
             <div className="loader"></div>
@@ -41,11 +46,6 @@ function App() {
             <button onClick={() => window.location.reload()} style={{ marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--primary-color)', color: 'white', border: 'none' }}>다시 시도</button>
         </div>
     );
-
-    const {
-        staffNames,
-        setStaffNames
-    } = useStaff();
 
     // Reset process filter when navigating away from process page
     useEffect(() => {
