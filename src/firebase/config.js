@@ -4,13 +4,13 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDCEeOsgMDzwrMPmnYWVJIzYA3GuRQQ65Y",
-    authDomain: "daehansa-workflow.firebaseapp.com",
-    databaseURL: "https://daehansa-workflow-default-rtdb.firebaseio.com",
-    projectId: "daehansa-workflow",
-    storageBucket: "daehansa-workflow.firebasestorage.app",
-    messagingSenderId: "409744604160",
-    appId: "1:409744604160:web:f084448f8bdca61f6e6ce5"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // initialize Firebase
