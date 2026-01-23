@@ -43,8 +43,8 @@ export const useProducts = () => {
 
         // Fast filtering from local cache
         return products.filter(p =>
-            p.productName?.toLowerCase().includes(lowerQuery) ||
-            p.productNumber?.includes(lowerQuery)
+            p.model?.toLowerCase().includes(lowerQuery) ||
+            p.code?.includes(lowerQuery)
         ).slice(0, 50); // Limit to 50 results for UI performance
     };
 

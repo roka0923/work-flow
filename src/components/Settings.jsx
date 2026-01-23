@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2 } from 'lucide-react';
-import { ref, set, update } from 'firebase/database';
+import React, { useState, useEffect } from 'react';
+import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2, Link as LinkIcon, RefreshCw } from 'lucide-react';
+import { ref, update, get, remove, serverTimestamp } from 'firebase/database';
 import { rtdb } from '../firebase/config';
-import itemData from '../data/items.json';
 import versionInfo from '../config/version.json';
 
 export default function Settings({ onResetData, jobsCount, staffNames, setStaffNames, deletedJobs = [], onRestoreJob, onPermanentDelete, onClearTrash }) {
@@ -18,7 +17,14 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
     const [isStaffExpanded, setIsStaffExpanded] = useState(false);
     const [isTrashExpanded, setIsTrashExpanded] = useState(false);
     const [isProductExpanded, setIsProductExpanded] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, isUploading: false, status: '' });
+
+    // Google Sheets Sync States
+    const [sheetsUrl, setSheetsUrl] = useState(localStorage.getItem('sheetsUrl') || '');
+    const [syncing, setSyncing] = useState(false);
+    const [syncProgress, setSyncProgress] = useState('');
+    const [syncMessage, setSyncMessage] = useState('');
+    const [syncError, setSyncError] = useState(false);
+    const [productsCount, setProductsCount] = useState(undefined);
 
     const openConfirm = (title, message, action, confirmText = '확인', type = 'danger') => {
         setConfirmConfig({ isOpen: true, title, message, action, confirmText, type });
@@ -40,39 +46,129 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
         setStaffNames(staffNames.filter(s => s !== name));
     };
 
-    const handleProductMigration = async () => {
-        if (uploadProgress.isUploading) return;
+    // Google Sheets Sync Logic
+    useEffect(() => {
+        const fetchProductsCount = async () => {
+            try {
+                const productsRef = ref(rtdb, 'products');
+                const snapshot = await get(productsRef);
+                if (snapshot.exists()) {
+                    setProductsCount(Object.keys(snapshot.val()).length);
+                } else {
+                    setProductsCount(0);
+                }
+            } catch (err) {
+                console.error("Error fetching products count:", err);
+            }
+        };
+        fetchProductsCount();
+    }, [syncMessage]);
 
-        setUploadProgress({ current: 0, total: itemData.length, isUploading: true, status: '마이그레이션 시작...' });
+    const handleSyncFromSheets = async () => {
+        if (!sheetsUrl) {
+            setSyncMessage('Google Sheets URL을 입력해주세요');
+            setSyncError(true);
+            return;
+        }
+
+        setSyncing(true);
+        setSyncError(false);
+        setSyncMessage('');
 
         try {
-            const batchSize = 100;
-            const total = itemData.length;
+            // 1. URL Storage
+            localStorage.setItem('sheetsUrl', sheetsUrl);
 
-            for (let i = 0; i < total; i += batchSize) {
-                const batch = itemData.slice(i, i + batchSize);
+            // 2. CSV Download
+            setSyncProgress('데이터 다운로드 중...');
+            const response = await fetch(sheetsUrl);
+
+            if (!response.ok) {
+                throw new Error('Google Sheets 데이터를 가져올 수 없습니다. URL을 확인하고 "웹에 게시"가 활성화되어 있는지 확인하세요.');
+            }
+
+            const csvText = await response.text();
+
+            // 3. CSV Parsing
+            setSyncProgress('데이터 파싱 중...');
+            const lines = csvText.split('\n').filter(line => line.trim());
+
+            if (lines.length < 2) {
+                throw new Error('데이터가 비어있습니다 (헤더 제외 최소 1줄 필요)');
+            }
+
+            // Headers parsing
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+
+            // Column mapping (Compatible with existing code/model pattern)
+            const numberIndex = headers.findIndex(h =>
+                h.includes('품목번호') || h.toLowerCase().includes('number') || h.includes('코드')
+            );
+            const nameIndex = headers.findIndex(h =>
+                h.includes('품목명') || h.toLowerCase().includes('name') || h.includes('모델')
+            );
+            const categoryIndex = headers.findIndex(h =>
+                h.includes('카테고리') || h.toLowerCase().includes('category')
+            );
+
+            if (numberIndex === -1 || nameIndex === -1) {
+                throw new Error('필수 열이 없습니다. "품목번호"와 "품목명" 열이 필요합니다.');
+            }
+
+            // 4. Transform Data
+            const products = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+
+                if (values[numberIndex] && values[nameIndex]) {
+                    products.push({
+                        code: values[numberIndex],
+                        model: values[nameIndex],
+                        category: categoryIndex !== -1 ? (values[categoryIndex] || '') : '',
+                        updatedAt: new Date().toISOString()
+                    });
+                }
+            }
+
+            if (products.length === 0) {
+                throw new Error('유효한 데이터가 없습니다');
+            }
+
+            // 5. Firebase Upload (Batch)
+            const batchSize = 500;
+            const productsRef = ref(rtdb, 'products');
+
+            // Delete existing products
+            setSyncProgress('기존 데이터 삭제 중...');
+            await remove(productsRef);
+
+            // Upload new products
+            for (let i = 0; i < products.length; i += batchSize) {
+                const batch = products.slice(i, i + batchSize);
                 const updates = {};
 
-                batch.forEach(item => {
-                    // Use code as the key for efficient lookup if it's unique enough, 
-                    // or just push if not. Here code seems to be 5-digit unique ID.
-                    updates[`/products/${item.code}`] = {
-                        code: item.code,
-                        model: item.model,
-                        updatedAt: new Date().toISOString()
-                    };
+                batch.forEach(product => {
+                    // Use product code as key for faster lookup
+                    updates[`/products/${product.code}`] = product;
                 });
 
                 await update(ref(rtdb), updates);
-                const currentProgress = Math.min(i + batchSize, total);
-                setUploadProgress(prev => ({ ...prev, current: currentProgress, status: `${currentProgress} / ${total} 완료` }));
+                setSyncProgress(`업로드 중: ${Math.min(i + batchSize, products.length)}/${products.length}`);
+
+                // Prevent rate limiting
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
 
-            setUploadProgress(prev => ({ ...prev, isUploading: false, status: '업로드 완료!' }));
-            setTimeout(() => setUploadProgress({ current: 0, total: 0, isUploading: false, status: '' }), 3000);
+            setSyncMessage(`✅ 동기화 완료! ${products.length}개 품목이 업데이트되었습니다.`);
+            setSyncError(false);
+
         } catch (error) {
-            console.error('Migration failed:', error);
-            setUploadProgress(prev => ({ ...prev, isUploading: false, status: '오류 발생: ' + error.message }));
+            console.error('Sync failed:', error);
+            setSyncMessage(`❌ 오류: ${error.message}`);
+            setSyncError(true);
+        } finally {
+            setSyncing(false);
+            setSyncProgress('');
         }
     };
 
@@ -214,54 +310,96 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
 
                 {isProductExpanded && (
                     <div className="animate-fade-in" style={{ padding: '0 20px 20px 20px', borderTop: '1px solid var(--glass-border)' }}>
-                        <div style={{ marginTop: '16px', marginBottom: '16px' }}>
-                            <div style={{ fontSize: '14px', marginBottom: '8px' }}>데이터베이스 마이그레이션</div>
-                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '16px' }}>
-                                로컬 `items.json` 파일의 품목 데이터({itemData.length}건)를 Firebase 실시간 데이터베이스로 업로드합니다.
-                                기존에 동일한 코드가 있는 경우 새로운 데이터로 업데이트됩니다.
+                        <div style={{ marginTop: '16px' }}>
+                            <div className="info-box" style={{
+                                background: 'rgba(34, 211, 238, 0.05)',
+                                borderLeft: '4px solid var(--primary)',
+                                padding: '16px',
+                                marginBottom: '20px',
+                                borderRadius: '8px',
+                                fontSize: '13px',
+                                lineHeight: '1.6'
+                            }}>
+                                <h4 style={{ marginTop: 0, color: 'var(--primary)', marginBottom: '8px' }}>📚 Google Sheets 설정 방법</h4>
+                                <ol style={{ margin: '0', paddingLeft: '20px', color: 'var(--text-muted)' }}>
+                                    <li>Google Sheets에서 품목 데이터 작성 (열: 품목번호, 품목명, 카테고리)</li>
+                                    <li>파일 → 공유 → 웹에 게시 클릭</li>
+                                    <li>"전체 문서" 선택, 형식 "쉼표로 구분된 값(.csv)" 선택</li>
+                                    <li>"게시" 클릭 후 생성된 URL 복사</li>
+                                    <li>아래 입력란에 URL 붙여넣기</li>
+                                    <li>"동기화" 버튼 클릭</li>
+                                </ol>
+                                <p style={{ marginTop: '8px', fontWeight: 'bold' }}>💡 팁: Google Sheets를 수정한 후 "동기화" 버튼만 누르면 자동으로 Firebase가 업데이트됩니다!</p>
                             </div>
 
-                            {!uploadProgress.isUploading && uploadProgress.status !== '업로드 완료!' ? (
-                                <button
-                                    onClick={() => openConfirm(
-                                        '품목 데이터 업로드',
-                                        `총 ${itemData.length}건의 품목 데이터를 Firebase로 전송하시겠습니까?\n이 작업은 몇 초 정도 소요될 수 있습니다.`,
-                                        handleProductMigration,
-                                        '업로드 시작',
-                                        'primary'
-                                    )}
-                                    className="btn btn-primary btn-full"
-                                >
-                                    <Upload size={18} />
-                                    데이터베이스로 업로드 시작
-                                </button>
-                            ) : (
-                                <div style={{
-                                    padding: '16px',
-                                    background: 'rgba(255,255,255,0.02)',
-                                    borderRadius: '12px',
-                                    border: '1px solid var(--glass-border)',
-                                    textAlign: 'center'
-                                }}>
-                                    {uploadProgress.status === '업로드 완료!' ? (
-                                        <div style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                                            <CheckCircle2 size={20} />
-                                            <span>{uploadProgress.status}</span>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div style={{ fontSize: '14px', marginBottom: '12px' }}>{uploadProgress.status}</div>
-                                            <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
-                                                <div style={{
-                                                    width: `${(uploadProgress.current / uploadProgress.total) * 100}%`,
-                                                    height: '100%',
-                                                    background: 'var(--primary)',
-                                                    transition: 'width 0.3s ease'
-                                                }} />
-                                            </div>
-                                        </>
-                                    )}
+                            <div className="form-group" style={{ marginBottom: '16px' }}>
+                                <label style={{ display: 'block', fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                    Google Sheets URL
+                                </label>
+                                <div style={{ position: 'relative' }}>
+                                    <LinkIcon size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                                    <input
+                                        type="url"
+                                        value={sheetsUrl}
+                                        onChange={(e) => setSheetsUrl(e.target.value)}
+                                        placeholder="https://docs.google.com/spreadsheets/d/e/..."
+                                        style={{
+                                            width: '100%',
+                                            padding: '12px 12px 12px 40px',
+                                            background: 'rgba(255,255,255,0.05)',
+                                            border: '1px solid var(--glass-border)',
+                                            borderRadius: '12px',
+                                            color: 'white',
+                                            fontSize: '14px'
+                                        }}
+                                    />
                                 </div>
+                            </div>
+
+                            <button
+                                onClick={handleSyncFromSheets}
+                                disabled={!sheetsUrl || syncing}
+                                className="btn btn-primary btn-full"
+                                style={{
+                                    height: '48px',
+                                    fontSize: '15px'
+                                }}
+                            >
+                                {syncing ? (
+                                    <>
+                                        <RefreshCw size={18} className="animate-spin" style={{ marginRight: '8px' }} />
+                                        {syncProgress}
+                                    </>
+                                ) : (
+                                    <>
+                                        <RefreshCw size={18} style={{ marginRight: '8px' }} />
+                                        Google Sheets에서 동기화
+                                    </>
+                                )}
+                            </button>
+
+                            {syncMessage && (
+                                <div style={{
+                                    marginTop: '16px',
+                                    padding: '12px',
+                                    borderRadius: '12px',
+                                    background: syncError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                                    color: syncError ? 'var(--danger)' : '#10b981',
+                                    border: `1px solid ${syncError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)'}`,
+                                    fontSize: '13px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}>
+                                    {syncError ? <AlertTriangle size={16} /> : <CheckCircle2 size={16} />}
+                                    {syncMessage}
+                                </div>
+                            )}
+
+                            {productsCount !== undefined && (
+                                <p style={{ marginTop: '16px', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
+                                    현재 DB 저장된 품목: <strong>{productsCount.toLocaleString()}개</strong>
+                                </p>
                             )}
                         </div>
                     </div>
