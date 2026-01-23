@@ -3,6 +3,9 @@ import { X } from 'lucide-react';
 import JobCard from './process/JobCard';
 import BatchActionBar from './process/BatchActionBar';
 import ProcessModals from './process/ProcessModals';
+import { statusKeys as STACK_STATUS_KEYS, STAGES, getJobStage } from '../utils/statusUtils';
+
+const statusKeys = STACK_STATUS_KEYS;
 
 export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDeleteJob, onEditJob, onAddJob, onPrefillRequest, filter, onClearFilter }) {
     const [selectedJob, setSelectedJob] = useState(null);
@@ -14,32 +17,14 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
     const [selectedGroups, setSelectedGroups] = useState(new Set());
     const [batchConfirmTarget, setBatchConfirmTarget] = useState(null);
 
-    const stages = [
-        { key: 'waiting', label: '분해대기', question: '분해 할 품목이 공장에 입고되었나요?' },
-        { key: 'disassembly', label: '분해완료', question: '분해가 완료되었나요?' },
-        { key: 'plating_release', label: '도금출고', question: '도금외주 반출되었나요?' },
-        { key: 'assembly_wait', label: '조립대기', question: '도금품 입고 및 분류되었나요?' },
-        { key: 'complete', label: '생산완료', question: '생산이 포장단계까지 완료되었나요?' }
-    ];
-
-    const allStages = [{ key: 'new_added', label: '신규추가' }, ...stages];
-    const statusKeys = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
-
-    const getJobStage = (job) => {
-        // 모든 공정이 완료된 경우
-        if (job.status && job.status.complete) return 'complete';
-
-        // 아직 아무것도 시작하지 않은 경우 (모든 상태가 false)
-        if (!job.status || statusKeys.every(key => !job.status[key])) return 'new_added';
-
-        // 첫 번째 미완료 공정 찾기 (해당 공정의 대기 목록으로 이동)
-        const firstIncompleteIndex = statusKeys.findIndex(key => !job.status[key]);
-
-        // 만약 모든 중간 단계가 완료되었는데 complete만 false라면 (이론상 발생 방지)
-        if (firstIncompleteIndex === -1) return 'complete';
-
-        return statusKeys[firstIncompleteIndex];
-    };
+    const stages = STAGES.filter(s => s.key !== 'new_added' && s.key !== 'complete').map(s => ({
+        ...s,
+        question: s.key === 'waiting' ? '분해 할 품목이 공장에 입고되었나요?' :
+            s.key === 'disassembly' ? '분해가 완료되었나요?' :
+                s.key === 'plating_release' ? '도금외주 반출되었나요?' :
+                    s.key === 'assembly_wait' ? '도금품 입고 및 분류되었나요?' :
+                        '공정이 완료되었나요?'
+    }));
 
     const getNextStage = (job) => {
         const currentStage = getJobStage(job);
@@ -50,12 +35,14 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
     };
 
     const filteredJobs = jobs.filter(job => {
+        const currentStage = getJobStage(job);
         if (filter === 'finished') return job.status.complete;
-        if (filter === 'new_added') return statusKeys.every(key => !job.status[key]);
+        if (filter === 'new_added') return currentStage === 'new_added';
         if (!filter) return !job.status.complete;
         if (filter === 'urgent') return job.urgent && !job.status.complete;
-        const lastCheckedIndex = statusKeys.map(k => job.status[k]).lastIndexOf(true);
-        return statusKeys[lastCheckedIndex] === filter;
+
+        // 대시보드 필터와 현재 단계가 일치하는 경우만 표시
+        return currentStage === filter;
     });
 
     const getBaseModel = (model) => {
@@ -68,22 +55,48 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
 
     filteredJobs.forEach(job => {
         const key = job.groupId || job.id;
+        const stage = getJobStage(job);
+
         if (!groupMap.has(key)) {
-            const group = { key, base: getBaseModel(job.model), items: [], urgent: false, requestDate: job.requestDate, code: job.code, stage: getJobStage(job) };
+            const group = {
+                key,
+                base: getBaseModel(job.model),
+                items: [job],
+                urgent: job.urgent || false,
+                requestDate: job.requestDate,
+                code: job.code,
+                minStage: stage,
+                minStageIndex: statusKeys.indexOf(stage) === -1 ? -1 : statusKeys.indexOf(stage)
+            };
             groupMap.set(key, group);
             groupedJobs.push(group);
+        } else {
+            const g = groupMap.get(key);
+            g.items.push(job);
+            if (job.urgent) g.urgent = true;
+            if (job.memo) g.memo = job.memo;
+            if (job.requestDate && (!g.requestDate || new Date(job.requestDate) < new Date(g.requestDate))) {
+                g.requestDate = job.requestDate;
+            }
+
+            // 그룹의 단계 결정 (가장 느린 단계 기준)
+            const currentStageIndex = statusKeys.indexOf(stage);
+            if (currentStageIndex !== -1 && (g.minStageIndex === -1 || currentStageIndex < g.minStageIndex)) {
+                g.minStageIndex = currentStageIndex;
+                g.minStage = stage;
+            } else if (stage === 'new_added') {
+                g.minStage = 'new_added';
+                g.minStageIndex = -1;
+            }
         }
-        const g = groupMap.get(key);
-        g.items.push(job);
-        if (job.urgent) g.urgent = true;
-        if (job.memo) g.memo = job.memo; // Update group memo if item has one
-        if (new Date(job.requestDate) < new Date(g.requestDate)) g.requestDate = job.requestDate;
     });
 
     const jobsByStage = {};
-    allStages.forEach(stage => { jobsByStage[stage.key] = groupedJobs.filter(g => g.stage === stage.key); });
+    STAGES.forEach(stage => {
+        jobsByStage[stage.key] = groupedJobs.filter(g => g.minStage === stage.key);
+    });
 
-    const stagesToShow = allStages.filter(stage => (jobsByStage[stage.key]?.length > 0) && (filter === 'complete' || stage.key !== 'complete'));
+    const stagesToShow = STAGES.filter(stage => (jobsByStage[stage.key]?.length > 0) && (filter === 'complete' || stage.key !== 'complete'));
 
     const handleConfirmStatus = () => {
         if (confirmTarget && selectedStaff) {

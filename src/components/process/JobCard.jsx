@@ -10,9 +10,23 @@ export default function JobCard({
     onStageClick,
     stages
 }) {
-    const isPair = group.items.length > 1;
-    const firstItem = group.items[0];
-    const jobIds = group.items.map(j => j.id);
+    const items = group.items || [];
+    const firstItem = items[0] || { status: {}, model: '정보 없음' };
+    const isPair = items.length > 1;
+    const jobIds = items.map(j => j.id);
+
+    // 그룹 내 모든 아이템이 해당 단계를 완료했는지 확인
+    const isStageDoneForGroup = (stageKey) => {
+        if (items.length === 0) return false;
+        return items.every(item => item.status && item.status[stageKey]);
+    };
+
+    // 이전 단계가 그룹 전체에 대해 완료되었는지 확인 (체크 가능 여부)
+    const canCheckStageForGroup = (index) => {
+        if (index === 0) return true;
+        const prevStageKey = stages[index - 1].key;
+        return isStageDoneForGroup(prevStageKey);
+    };
 
     return (
         <div
@@ -107,9 +121,8 @@ export default function JobCard({
                         }} />
 
                         {stages.map((stage, index) => {
-                            const isDone = firstItem.status[stage.key];
-                            const prevStage = index > 0 ? stages[index - 1].key : null;
-                            const canCheck = !prevStage || firstItem.status[prevStage];
+                            const isDone = isStageDoneForGroup(stage.key);
+                            const canCheck = canCheckStageForGroup(index);
 
                             return (
                                 <div

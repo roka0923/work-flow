@@ -2,15 +2,9 @@ import React from 'react';
 import { Activity, CheckCircle2, AlertTriangle, Package } from 'lucide-react';
 import StatCard from './dashboard/StatCard';
 import QueueCard from './dashboard/QueueCard';
+import { statusKeys, STAGES, getJobStage } from '../utils/statusUtils';
 
 export default function Dashboard({ jobs, onStageClick }) {
-    const statusKeys = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
-
-    const getJobStage = (job) => {
-        if (statusKeys.every(key => !job.status[key])) return 'new_added';
-        const lastCheckedIndex = statusKeys.map(k => job.status[k]).lastIndexOf(true);
-        return statusKeys[lastCheckedIndex] || 'new_added';
-    };
 
     // Group jobs by groupId (falling back to id)
     const groupedJobs = [];
@@ -18,22 +12,36 @@ export default function Dashboard({ jobs, onStageClick }) {
 
     jobs.forEach(job => {
         const key = job.groupId || job.id;
+        const stage = getJobStage(job);
+
         if (!groupMap.has(key)) {
             const group = {
                 key,
-                items: [],
-                urgent: false,
-                complete: job.status.complete,
-                stage: getJobStage(job)
+                items: [job],
+                urgent: job.urgent || false,
+                complete: job.status?.complete || false,
+                minStage: stage,
+                minStageIndex: statusKeys.indexOf(stage) === -1 ? -1 : statusKeys.indexOf(stage)
             };
             groupMap.set(key, group);
             groupedJobs.push(group);
+        } else {
+            const g = groupMap.get(key);
+            g.items.push(job);
+            if (job.urgent) g.urgent = true;
+            if (!job.status?.complete) g.complete = false;
+
+            // 그룹의 단계는 구성 요소 중 가장 뒤처진 단계를 따름 (예: 하나라도 분해대기면 그룹 전체가 분해대기)
+            const currentStageIndex = statusKeys.indexOf(stage);
+            if (currentStageIndex !== -1 && (g.minStageIndex === -1 || currentStageIndex < g.minStageIndex)) {
+                g.minStageIndex = currentStageIndex;
+                g.minStage = stage;
+            } else if (stage === 'new_added' && g.minStage !== 'new_added') {
+                // 신규추가는 statusKeys에 없으므로 별도 처리 (-1 인덱스)
+                g.minStage = 'new_added';
+                g.minStageIndex = -1;
+            }
         }
-        const g = groupMap.get(key);
-        g.items.push(job);
-        if (job.urgent) g.urgent = true;
-        // If any item in group is not complete, the group is not complete
-        if (!job.status.complete) g.complete = false;
     });
 
     const activeJobs = groupedJobs.filter(g => !g.complete).length;
@@ -50,7 +58,10 @@ export default function Dashboard({ jobs, onStageClick }) {
     ];
 
     const getStageStats = (stageKey) => {
-        return groupedJobs.filter(g => g.stage === stageKey).length;
+        return groupedJobs.filter(g => {
+            const finalStage = (g.minStage === undefined) ? 'new_added' : g.minStage;
+            return finalStage === stageKey;
+        }).length;
     };
 
     return (
@@ -88,7 +99,7 @@ export default function Dashboard({ jobs, onStageClick }) {
             </h2>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {stages.map((stage) => {
+                {STAGES.map((stage) => {
                     const count = getStageStats(stage.key);
                     const percentage = groupedJobs.length > 0 ? (count / groupedJobs.length) * 100 : 0;
                     return (
