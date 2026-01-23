@@ -72,36 +72,11 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
         const groupId = (prefillData && prefillData.groupId) ? prefillData.groupId : `${timestamp}_${selectedItem.code}`;
 
         if (isSetRegistration) {
-            // Create LH and RH pair
-            // Logic: selectedItem.model might be just "Poster 2" or "Poster 2 LH".
-            // We need to robustly generate the opposite name.
-
-            const isLH = selectedItem.model.includes('LH');
-            const isRH = selectedItem.model.includes('RH');
-
-            let model1 = selectedItem.model;
-            let model2 = selectedItem.model;
-
-            if (isLH) {
-                model2 = selectedItem.model.replace('LH', 'RH');
-            } else if (isRH) {
-                model2 = selectedItem.model.replace('RH', 'LH');
-            } else {
-                // If no suffix, append LH and RH? Or just assume it mimics "Add Opposite" logic
-                // But usually items in DB have specific names. 
-                // Let's assume standard "Name LH" / "Name RH" pattern exists in DB or we just append.
-                model1 = selectedItem.model + ' (LH)';
-                model2 = selectedItem.model + ' (RH)';
-            }
-
-            const job1 = { ...baseJob, id: timestamp, groupId, model: model1 };
-            const job2 = { ...baseJob, id: timestamp + 1, groupId, model: model2 };
-
-            onAddJob([job1, job2]);
+            // LH+RH 세트 등록 플래그 포함
+            onAddJob({ ...baseJob, model: selectedItem.model, addBothSides: true });
         } else {
-            // Single job
-            const job = { ...baseJob, id: timestamp, groupId, model: selectedItem.model };
-            onAddJob(job);
+            // 단일 작업
+            onAddJob({ ...baseJob, model: selectedItem.model });
         }
     };
 

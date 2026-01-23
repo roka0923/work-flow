@@ -57,6 +57,7 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         const key = job.groupId || job.id;
         const stage = getJobStage(job);
 
+
         if (!groupMap.has(key)) {
             const group = {
                 key,
@@ -134,9 +135,28 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         setIsEditing(false);
     };
 
-    const handleStageClick = (jobIds, stage, isDone, canCheck) => {
-        if (canCheck && !isDone) setConfirmTarget({ jobIds, stageKey: stage.key, label: stage.label, question: stage.question });
-        else if (canCheck && isDone) onUpdateStatus(jobIds, stage.key);
+    const handleStageChange = (jobId, newStageKey) => {
+        console.log('=== ProcessList: 공정 변경 요청 ===');
+        console.log('🎯 Job ID:', jobId, 'New Stage Key:', newStageKey);
+
+        const job = jobs.find(j => j.id === jobId);
+        if (!job) {
+            console.error('❌ 오류: job을 찾을 수 없음!', jobId);
+            return;
+        }
+
+        const targetStage = stages.find(s => s.key === newStageKey);
+        const stageLabel = targetStage ? targetStage.label : newStageKey;
+        const question = targetStage ? targetStage.question : `${stageLabel} 상태로 변경하시겠습니까?`;
+
+        console.log('📌 팝업 설정:', { label: stageLabel, question });
+
+        setConfirmTarget({
+            jobIds: [jobId], // 단일 ID도 배열로 전달
+            stageKey: newStageKey,
+            label: stageLabel,
+            question: question
+        });
     };
 
     const handleToggleStage = (stageKey) => {
@@ -185,7 +205,7 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                                         <JobCard
                                             key={group.key} group={group} isSelected={selectedGroups.has(group.key)}
                                             onToggleSelection={(key) => { const n = new Set(selectedGroups); if (n.has(key)) n.delete(key); else n.add(key); setSelectedGroups(n); }}
-                                            onDelete={setDeleteTarget} onDetailClick={setSelectedJob} onStageClick={handleStageClick} stages={stages}
+                                            onDelete={setDeleteTarget} onDetailClick={setSelectedJob} onStageClick={handleStageChange} stages={stages}
                                         />
                                     ))}
                                 </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ref, onValue, set, push, update, remove, serverTimestamp } from 'firebase/database';
+import { ref, onValue, set, push, update, remove, serverTimestamp, get } from 'firebase/database';
 import { rtdb } from '../firebase/config';
 
 export function useJobs() {
@@ -15,10 +15,14 @@ export function useJobs() {
             try {
                 const data = snapshot.val();
                 if (data) {
-                    const jobsList = Object.keys(data).map(key => ({
-                        id: key,
-                        ...data[key]
-                    })).sort((a, b) => {
+                    const jobsList = Object.keys(data).map(key => {
+                        const val = data[key];
+                        // Firebase 노드 키(Push Key)를 작업의 실제 고유 ID로 사용 (핵심 해결책)
+                        return {
+                            ...val,
+                            id: key
+                        };
+                    }).sort((a, b) => {
                         const timeA = typeof a.updatedAt === 'number' ? a.updatedAt : (a.updatedAt?.seconds ? a.updatedAt.seconds * 1000 : new Date(a.updatedAt).getTime() || 0);
                         const timeB = typeof b.updatedAt === 'number' ? b.updatedAt : (b.updatedAt?.seconds ? b.updatedAt.seconds * 1000 : new Date(b.updatedAt).getTime() || 0);
                         return timeB - timeA;
@@ -45,8 +49,8 @@ export function useJobs() {
             const data = snapshot.val();
             if (data) {
                 const deletedList = Object.keys(data).map(key => ({
-                    id: key,
-                    ...data[key]
+                    ...data[key],
+                    id: key
                 }));
                 setDeletedJobs(deletedList);
             } else {
@@ -60,32 +64,73 @@ export function useJobs() {
         };
     }, []);
 
-    const addJob = async (newJobOrJobs) => {
+    const addJob = async (jobData) => {
         try {
-            const jobsArray = Array.isArray(newJobOrJobs) ? newJobOrJobs : [newJobOrJobs];
-            const jobsRef = ref(rtdb, 'processes');
+            // LH+RH 세트인 경우 (요청 사항 반영)
+            if (jobData.addBothSides) {
+                const groupId = `group_${Date.now()}`;
 
-            for (const job of jobsArray) {
-                const newJobRef = push(jobsRef);
+                // LH 추가
+                const lhRef = push(ref(rtdb, 'processes'));
+                const { addBothSides: _, ...pureData } = jobData;
+                await set(lhRef, {
+                    ...pureData,
+                    id: lhRef.key,
+                    groupId: groupId,
+                    side: 'LH',
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+
+                // RH 추가
+                const rhRef = push(ref(rtdb, 'processes'));
+                await set(rhRef, {
+                    ...pureData,
+                    id: rhRef.key,
+                    groupId: groupId,
+                    side: 'RH',
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+
+            } else if (Array.isArray(jobData)) {
+                // 이전 배열 처리 로직 유지 (호환성)
+                for (const job of jobData) {
+                    const newJobRef = push(ref(rtdb, 'processes'));
+                    const { id: _, ...jobToSave } = job;
+                    await set(newJobRef, {
+                        ...jobToSave,
+                        id: newJobRef.key,
+                        stage: job.stage || "신규추가",
+                        status: job.status || "진행중",
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    });
+                }
+            } else {
+                // 단일 작업
+                const newJobRef = push(ref(rtdb, 'processes'));
+                const { id: _, ...jobToSave } = jobData;
                 await set(newJobRef, {
-                    ...job,
-                    stage: job.stage || "신규추가",
-                    status: job.status || "진행중",
+                    ...jobToSave,
+                    id: newJobRef.key,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp()
                 });
             }
-        } catch (err) {
-            console.error("Firebase Add Error:", err);
-            setError("데이터 추가 중 오류가 발생했습니다.");
+        } catch (error) {
+            console.error('작업 추가 실패:', error);
+            setError("작업 추가 중 오류가 발생했습니다.");
+            throw error;
         }
     };
 
     const editJob = async (jobId, updatedData) => {
         try {
             const jobRef = ref(rtdb, `processes/${jobId}`);
+            const { id: _, ...dataToUpdate } = updatedData;
             await update(jobRef, {
-                ...updatedData,
+                ...dataToUpdate,
                 updatedAt: serverTimestamp()
             });
         } catch (err) {
@@ -101,8 +146,9 @@ export function useJobs() {
                 if (jobToDelete) {
                     // Move to deleted_processes
                     const deletedRef = ref(rtdb, `deleted_processes/${id}`);
+                    const { id: _, ...dataToSave } = jobToDelete;
                     await set(deletedRef, {
-                        ...jobToDelete,
+                        ...dataToSave,
                         deletedAt: new Date().toISOString()
                     });
                     // Remove from processes
@@ -118,7 +164,7 @@ export function useJobs() {
         try {
             const jobToRestore = deletedJobs.find(j => j.id === jobId);
             if (jobToRestore) {
-                const { deletedAt, ...restoredJob } = jobToRestore;
+                const { deletedAt, id: _, ...restoredJob } = jobToRestore;
                 const jobRef = ref(rtdb, `processes/${jobId}`);
                 await set(jobRef, {
                     ...restoredJob,
@@ -155,56 +201,130 @@ export function useJobs() {
         }
     };
 
-    const updateJobStatus = async (targetIds, stage, staffName) => {
-        try {
-            const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
-            const statusKeys = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
+    const updateJobStatus = async (targetIds, newStage, staffName = '시스템') => {
+        const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
 
-            for (const id of ids) {
-                const job = jobs.find(j => j.id === id);
-                if (job) {
-                    const isCompleting = !job.status[stage];
-                    const jobRef = ref(rtdb, `processes/${id}`);
+        console.log('--- updateJobStatus Start ---');
+        console.log('IDs to update:', ids, 'NewStage:', newStage, 'Staff:', staffName);
 
-                    const updates = {};
-                    updates[`status/${stage}`] = isCompleting;
-                    updates['updatedAt'] = serverTimestamp();
+        for (const id of ids) {
+            if (!id || id === 'undefined') {
+                console.warn('⚠️ Invalid ID skipped:', id);
+                continue;
+            }
 
-                    if (isCompleting) {
-                        // 체크 (완료) 처리
-                        const newHistory = [...(job.history || []), {
-                            stage,
-                            staffName,
-                            timestamp: new Date().toISOString()
-                        }];
-                        updates['history'] = newHistory;
-                        updates['stage'] = stage;
-                    } else {
-                        // 체크 해제 처리: 해당 단계 이후의 모든 단계를 false로 전환
-                        const currentIndex = statusKeys.indexOf(stage);
-                        if (currentIndex !== -1) {
-                            for (let i = currentIndex; i < statusKeys.length; i++) {
-                                updates[`status/${statusKeys[i]}`] = false;
+            const targetJob = jobs.find(j => j.id === id);
+            if (!targetJob) {
+                console.error('❌ Job not found in local state!', id);
+                continue;
+            }
+
+            const groupId = targetJob.groupId;
+            const { id: _, ...metaData } = targetJob;
+
+            // 히스토리 항목 준비
+            const historyItem = {
+                stage: newStage,
+                staffName: staffName,
+                timestamp: Date.now()
+            };
+
+            const updatedHistory = Array.isArray(targetJob.history)
+                ? [...targetJob.history, historyItem]
+                : [historyItem];
+
+            // status 객체 업데이트 (기존 공정 체크 상태 보존 및 새 공정 + 이전 공정 체크)
+            const currentStatus = (typeof targetJob.status === 'object' && targetJob.status !== null)
+                ? targetJob.status
+                : { waiting: false, disassembly: false, plating_release: false, assembly_wait: false, complete: false };
+
+            // 공정 순서 정의
+            const statusOrder = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
+            const newStageIndex = statusOrder.indexOf(newStage);
+
+            // 새 상태 객체 생성
+            const updatedStatus = { ...currentStatus };
+
+            // 현재 단계와 그 이전 단계들을 모두 true로 설정
+            if (newStageIndex !== -1) {
+                for (let i = 0; i <= newStageIndex; i++) {
+                    updatedStatus[statusOrder[i]] = true;
+                }
+            } else {
+                // 예외: 순서에 없는 키가 들어온 경우 해당 키만 true 처리
+                updatedStatus[newStage] = true;
+            }
+
+            updatedStatus.lastUpdated = new Date().toISOString();
+
+            // 생산완료 또는 complete 키에 대한 상호 호환성 처리
+            if (newStage === '생산완료' || newStage === 'complete') {
+                updatedStatus.complete = true;
+                updatedStatus.생산완료 = true;
+                // 모든 단계 완료 처리
+                statusOrder.forEach(key => updatedStatus[key] = true);
+            }
+
+
+
+            const updateData = {
+                ...metaData,
+                stage: newStage,
+                status: updatedStatus,
+                updatedAt: Date.now(),
+                history: updatedHistory
+            };
+
+            try {
+                // 실제 Firebase 업데이트
+                await update(ref(rtdb, `processes/${id}`), updateData);
+
+                // 그룹 업데이트 (한 번만 호출될 때 자동 연동)
+                if (groupId && !Array.isArray(targetIds)) {
+                    const groupJobs = jobs.filter(j => j.groupId === groupId && j.id !== id);
+                    for (const job of groupJobs) {
+                        const { id: gId, ...gMeta } = job;
+                        const gHistory = Array.isArray(job.history)
+                            ? [...job.history, historyItem]
+                            : [historyItem];
+
+                        // 그룹 파트너도 동일한 로직으로 상태 업데이트
+                        const gCurrentStatus = (typeof job.status === 'object' && job.status !== null)
+                            ? job.status
+                            : { waiting: false, disassembly: false, plating_release: false, assembly_wait: false, complete: false };
+
+                        const gUpdatedStatus = { ...gCurrentStatus };
+
+                        if (newStageIndex !== -1) {
+                            for (let i = 0; i <= newStageIndex; i++) {
+                                gUpdatedStatus[statusOrder[i]] = true;
                             }
+                        } else {
+                            gUpdatedStatus[newStage] = true;
                         }
 
-                        // 히스토리에서 해당 단계 이후 기록 삭제
-                        const newHistory = (job.history || []).filter(h =>
-                            statusKeys.indexOf(h.stage) < currentIndex
-                        );
-                        updates['history'] = newHistory;
+                        gUpdatedStatus.lastUpdated = new Date().toISOString();
 
-                        // 현재 공정 단계 필드 업데이트
-                        const prevIndex = currentIndex - 1;
-                        updates['stage'] = prevIndex >= 0 ? statusKeys[prevIndex] : "신규추가";
+                        if (newStage === '생산완료' || newStage === 'complete') {
+                            gUpdatedStatus.complete = true;
+                            gUpdatedStatus.생산완료 = true;
+                            statusOrder.forEach(key => gUpdatedStatus[key] = true);
+                        }
+
+                        const gUpdateData = {
+                            ...gMeta,
+                            stage: newStage,
+                            status: gUpdatedStatus,
+                            updatedAt: Date.now(),
+                            history: gHistory
+                        };
+                        await update(ref(rtdb, `processes/${gId}`), gUpdateData);
                     }
-
-                    await update(jobRef, updates);
                 }
+            } catch (error) {
+                console.error(`❌ Update Failed for ${id}:`, error);
+                setError("상태 업데이트 실패: " + error.message);
             }
-        } catch (err) {
-            console.error("Status Update Error:", err);
-            setError("상태 업데이트 중 오류가 발생했습니다.");
         }
     };
 

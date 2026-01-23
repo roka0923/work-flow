@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { CheckCircle2, Circle, Clock, MessageSquare, Trash2, Square, CheckSquare } from 'lucide-react';
 
 export default function JobCard({
@@ -14,6 +14,18 @@ export default function JobCard({
     const firstItem = items[0] || { status: {}, model: '정보 없음' };
     const isPair = items.length > 1;
     const jobIds = items.map(j => j.id);
+
+    useEffect(() => {
+        console.log('🎴 JobCard 렌더링:', {
+            groupId: group.key || group.id,
+            items: items.map(item => ({
+                id: item.id,
+                side: item.side,
+                stage: item.stage,
+                productNumber: item.productNumber
+            }))
+        });
+    }, [group]);
 
     // 그룹 내 모든 아이템이 해당 단계를 완료했는지 확인
     const isStageDoneForGroup = (stageKey) => {
@@ -138,7 +150,7 @@ export default function JobCard({
                                     }}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        onStageClick(jobIds, stage, isDone, canCheck);
+                                        onStageClick(firstItem.id, stage.key);
                                     }}
                                 >
                                     <div style={{

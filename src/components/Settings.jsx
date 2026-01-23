@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2, Link as LinkIcon, RefreshCw } from 'lucide-react';
+import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2, Link as LinkIcon, RefreshCw, Activity } from 'lucide-react';
 import { ref, update, get, remove, serverTimestamp } from 'firebase/database';
 import { rtdb } from '../firebase/config';
 import versionInfo from '../config/version.json';
+import { debugFirebaseStructure } from '../utils/debugFirebase';
 
 export default function Settings({ onResetData, jobsCount, staffNames, setStaffNames, deletedJobs = [], onRestoreJob, onPermanentDelete, onClearTrash }) {
     const [confirmConfig, setConfirmConfig] = useState({
@@ -169,6 +170,56 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
         } finally {
             setSyncing(false);
             setSyncProgress('');
+        }
+    };
+
+    const cleanupGhostNodes = async () => {
+        try {
+            const processesRef = ref(rtdb, 'processes');
+            const snapshot = await get(processesRef);
+
+            if (!snapshot.exists()) {
+                alert('정리할 데이터가 없습니다');
+                return;
+            }
+
+            const data = snapshot.val();
+            const updates = {};
+            let ghostCount = 0;
+
+            Object.entries(data).forEach(([key, value]) => {
+                // 1. 타임스탬프 형태의 유령 노드 (13자리 숫자)
+                if (/^\d{13}$/.test(key)) {
+                    console.log('타임스탬프 유령 노드 발견:', key, value);
+                    updates[`processes/${key}`] = null;
+                    ghostCount++;
+                }
+
+                // 2. "undefined" 노드
+                else if (key === 'undefined') {
+                    console.log('undefined 노드 발견:', value);
+                    updates[`processes/undefined`] = null;
+                    ghostCount++;
+                }
+
+                // 3. 필수 필드 없는 불완전한 노드 (프로젝트 표준인 code, model 기준)
+                else if (!value.code || !value.model) {
+                    console.log('불완전한 노드 발견:', key, value);
+                    updates[`processes/${key}`] = null;
+                    ghostCount++;
+                }
+            });
+
+            if (ghostCount > 0) {
+                await update(ref(rtdb), updates);
+                alert(`✅ ${ghostCount}개의 유령 노드를 정리했습니다`);
+            } else {
+                alert('✅ 정리할 유령 노드가 없습니다');
+            }
+
+        } catch (error) {
+            console.error('데이터 정리 실패:', error);
+            alert(`❌ 오류: ${error.message}`);
         }
     };
 
@@ -616,6 +667,46 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
                         GitHub 저장소 방문
                         <ExternalLink size={12} />
                     </a>
+                </div>
+            </div>
+
+            {/* Debugging Tools */}
+            <div className="card" style={{ marginTop: '24px', border: '1px solid rgba(34, 211, 238, 0.3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                    <Activity size={20} color="var(--primary)" />
+                    <h3 style={{ margin: 0 }}>🔧 개발자 도구</h3>
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                    <button
+                        onClick={debugFirebaseStructure}
+                        className="btn btn-secondary btn-full"
+                        style={{ marginBottom: '8px', justifyContent: 'center' }}
+                    >
+                        🔍 Firebase 데이터 구조 확인 (콘솔 로그)
+                    </button>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '12px', lineHeight: '1.5', margin: 0 }}>
+                        F12를 눌러 콘솔을 열고 이 버튼을 클릭하면 현재 Firebase 데이터 구조를 확인할 수 있습니다.
+                    </p>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '16px' }}>
+                    <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        🧹 데이터베이스 정리
+                    </h4>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginBottom: '12px' }}>
+                        잘못된 데이터 노드(유령 노드)를 제거합니다. 타임스탬프 ID 노드나 필수 정보가 없는 노드를 정리합니다.
+                    </p>
+                    <button
+                        onClick={cleanupGhostNodes}
+                        className="btn btn-danger btn-full"
+                        style={{ marginBottom: '12px', justifyContent: 'center' }}
+                    >
+                        🗑️ 유령 노드 정리 실행
+                    </button>
+                    <p style={{ color: 'var(--danger)', fontSize: '10px', opacity: 0.8 }}>
+                        ⚠️ 주의: 이 작업은 되돌릴 수 없습니다. 실행 전에 데이터를 확인하세요.
+                    </p>
                 </div>
             </div>
 
