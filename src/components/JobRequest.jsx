@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import itemData from '../data/items.json';
-import { Search, Package, AlertCircle } from 'lucide-react';
+import { useProducts } from '../hooks/useProducts';
+import { Search, Package, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staffNames }) {
     const [searchTerm, setSearchTerm] = useState('');
@@ -10,10 +10,13 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
     const [author, setAuthor] = useState('');
     const [memo, setMemo] = useState('');
 
+    // Use the product hook for real-time Firebase data
+    const { products, loading: productsLoading, searchProducts } = useProducts();
+
     useEffect(() => {
-        if (prefillData) {
+        if (prefillData && !productsLoading) {
             // Find item by code or model
-            const item = itemData.find(i => i.code === prefillData.code) ||
+            const item = products.find(i => i.code === prefillData.code) ||
                 { code: prefillData.code, model: prefillData.model };
 
             setSelectedItem(item);
@@ -25,24 +28,21 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
             // Clear prefill data once consumed
             onClearPrefill();
         }
-    }, [prefillData, onClearPrefill]);
+    }, [prefillData, onClearPrefill, productsLoading, products]);
 
     // Item 1: Auto-select when 5-digit code is typed
     useEffect(() => {
         const pureCode = searchTerm.trim();
         if (pureCode.length === 5 && /^\d+$/.test(pureCode) && (!selectedItem || selectedItem.code !== pureCode)) {
-            const match = itemData.find(item => item.code === pureCode);
+            const match = products.find(item => item.code === pureCode);
             if (match) {
                 setSelectedItem(match);
                 setSearchTerm(`${match.code} - ${match.model}`);
             }
         }
-    }, [searchTerm, selectedItem]);
+    }, [searchTerm, selectedItem, products]);
 
-    const filteredItems = itemData.filter(item =>
-        (item.model && item.model.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (item.code && item.code.includes(searchTerm))
-    ).slice(0, 50); // Show up to 50 results instead of 5
+    const filteredItems = searchProducts(searchTerm);
 
     const [isSetRegistration, setIsSetRegistration] = useState(false);
 
@@ -116,9 +116,10 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
                         <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                         <input
                             type="text"
-                            placeholder="예: 11011 또는 아토스"
+                            placeholder={productsLoading ? "품목 정보를 불러오는 중..." : "예: 11011 또는 아토스"}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
+                            disabled={productsLoading}
                             style={{
                                 width: '100%',
                                 padding: '12px 12px 12px 40px',
@@ -126,9 +127,17 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
                                 background: 'rgba(255,255,255,0.05)',
                                 border: '1px solid var(--glass-border)',
                                 color: 'white',
-                                outline: 'none'
+                                outline: 'none',
+                                opacity: productsLoading ? 0.6 : 1
                             }}
                         />
+                        {productsLoading && (
+                            <Loader2
+                                size={18}
+                                className="animate-spin"
+                                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)' }}
+                            />
+                        )}
                     </div>
 
                     {searchTerm && !selectedItem && (

@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2 } from 'lucide-react';
+import { ref, set, update } from 'firebase/database';
+import { rtdb } from '../firebase/config';
+import itemData from '../data/items.json';
 import versionInfo from '../config/version.json';
 
 export default function Settings({ onResetData, jobsCount, staffNames, setStaffNames, deletedJobs = [], onRestoreJob, onPermanentDelete, onClearTrash }) {
@@ -14,6 +16,8 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
     const [newStaffName, setNewStaffName] = useState('');
     const [isStaffExpanded, setIsStaffExpanded] = useState(false);
     const [isTrashExpanded, setIsTrashExpanded] = useState(false);
+    const [isProductExpanded, setIsProductExpanded] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, isUploading: false, status: '' });
 
     const openConfirm = (title, message, action, confirmText = '확인', type = 'danger') => {
         setConfirmConfig({ isOpen: true, title, message, action, confirmText, type });
@@ -33,6 +37,42 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
 
     const removeStaff = (name) => {
         setStaffNames(staffNames.filter(s => s !== name));
+    };
+
+    const handleProductMigration = async () => {
+        if (uploadProgress.isUploading) return;
+
+        setUploadProgress({ current: 0, total: itemData.length, isUploading: true, status: '마이그레이션 시작...' });
+
+        try {
+            const batchSize = 100;
+            const total = itemData.length;
+
+            for (let i = 0; i < total; i += batchSize) {
+                const batch = itemData.slice(i, i + batchSize);
+                const updates = {};
+
+                batch.forEach(item => {
+                    // Use code as the key for efficient lookup if it's unique enough, 
+                    // or just push if not. Here code seems to be 5-digit unique ID.
+                    updates[`/products/${item.code}`] = {
+                        code: item.code,
+                        model: item.model,
+                        updatedAt: new Date().toISOString()
+                    };
+                });
+
+                await update(ref(rtdb), updates);
+                const currentProgress = Math.min(i + batchSize, total);
+                setUploadProgress(prev => ({ ...prev, current: currentProgress, status: `${currentProgress} / ${total} 완료` }));
+            }
+
+            setUploadProgress(prev => ({ ...prev, isUploading: false, status: '업로드 완료!' }));
+            setTimeout(() => setUploadProgress({ current: 0, total: 0, isUploading: false, status: '' }), 3000);
+        } catch (error) {
+            console.error('Migration failed:', error);
+            setUploadProgress(prev => ({ ...prev, isUploading: false, status: '오류 발생: ' + error.message }));
+        }
     };
 
     return (
@@ -141,6 +181,85 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
                             {staffNames.length === 0 && (
                                 <div style={{ width: '100%', textAlign: 'center', padding: '10px', color: 'var(--text-muted)', fontSize: '14px' }}>
                                     등록된 직원이 없습니다.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Product Database Management */}
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div
+                    onClick={() => setIsProductExpanded(!isProductExpanded)}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '20px',
+                        cursor: 'pointer',
+                        background: isProductExpanded ? 'rgba(255,255,255,0.02)' : 'transparent',
+                        transition: 'background 0.2s'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000' }}>
+                            <Package size={14} />
+                        </div>
+                        <h3 style={{ margin: 0 }}>품목 데이터베이스 관리</h3>
+                    </div>
+                    {isProductExpanded ? <ChevronUp size={20} color="var(--text-muted)" /> : <ChevronDown size={20} color="var(--text-muted)" />}
+                </div>
+
+                {isProductExpanded && (
+                    <div className="animate-fade-in" style={{ padding: '0 20px 20px 20px', borderTop: '1px solid var(--glass-border)' }}>
+                        <div style={{ marginTop: '16px', marginBottom: '16px' }}>
+                            <div style={{ fontSize: '14px', marginBottom: '8px' }}>데이터베이스 마이그레이션</div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '16px' }}>
+                                로컬 `items.json` 파일의 품목 데이터({itemData.length}건)를 Firebase 실시간 데이터베이스로 업로드합니다.
+                                기존에 동일한 코드가 있는 경우 새로운 데이터로 업데이트됩니다.
+                            </div>
+
+                            {!uploadProgress.isUploading && uploadProgress.status !== '업로드 완료!' ? (
+                                <button
+                                    onClick={() => openConfirm(
+                                        '품목 데이터 업로드',
+                                        `총 ${itemData.length}건의 품목 데이터를 Firebase로 전송하시겠습니까?\n이 작업은 몇 초 정도 소요될 수 있습니다.`,
+                                        handleProductMigration,
+                                        '업로드 시작',
+                                        'primary'
+                                    )}
+                                    className="btn btn-primary btn-full"
+                                >
+                                    <Upload size={18} />
+                                    데이터베이스로 업로드 시작
+                                </button>
+                            ) : (
+                                <div style={{
+                                    padding: '16px',
+                                    background: 'rgba(255,255,255,0.02)',
+                                    borderRadius: '12px',
+                                    border: '1px solid var(--glass-border)',
+                                    textAlign: 'center'
+                                }}>
+                                    {uploadProgress.status === '업로드 완료!' ? (
+                                        <div style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                            <CheckCircle2 size={20} />
+                                            <span>{uploadProgress.status}</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div style={{ fontSize: '14px', marginBottom: '12px' }}>{uploadProgress.status}</div>
+                                            <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
+                                                <div style={{
+                                                    width: `${(uploadProgress.current / uploadProgress.total) * 100}%`,
+                                                    height: '100%',
+                                                    background: 'var(--primary)',
+                                                    transition: 'width 0.3s ease'
+                                                }} />
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>
