@@ -10,6 +10,8 @@ import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Home, PlusCircle, List, Settings as SettingsIcon, Users } from 'lucide-react';
 import AdminPanel from './components/AdminPanel';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from './firebase/config';
 
 function AppContent() {
     const { currentUser, userRole, logout, isAdmin, isManager } = useAuth();
@@ -32,10 +34,20 @@ function AppContent() {
         updateJobStatus
     } = useJobs();
 
-    const {
-        staffNames,
-        setStaffNames
-    } = useStaff();
+    const [staffNames, setStaffNames] = useState([]);
+
+    // Firestore에서 직원 목록(이름) 실시간 동기화
+    useEffect(() => {
+        if (!currentUser) return;
+
+        const q = query(collection(db, "users"), orderBy("name", "asc"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const names = snapshot.docs.map(doc => doc.data().name || doc.data().email.split('@')[0]);
+            setStaffNames(names);
+        });
+
+        return () => unsubscribe();
+    }, [currentUser]);
 
     // 역할별 탭 정의
     const getTabs = () => {

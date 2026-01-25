@@ -5,7 +5,7 @@ import { rtdb } from '../firebase/config';
 import versionInfo from '../config/version.json';
 import { debugFirebaseStructure } from '../utils/debugFirebase';
 
-export default function Settings({ onResetData, jobsCount, staffNames, setStaffNames, deletedJobs = [], onRestoreJob, onPermanentDelete, onClearTrash }) {
+export default function Settings({ onResetData, jobsCount, deletedJobs = [], onRestoreJob, onPermanentDelete, onClearTrash }) {
     const [confirmConfig, setConfirmConfig] = useState({
         isOpen: false,
         title: '',
@@ -14,8 +14,6 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
         confirmText: '',
         type: 'danger'
     });
-    const [newStaffName, setNewStaffName] = useState('');
-    const [isStaffExpanded, setIsStaffExpanded] = useState(false);
     const [isTrashExpanded, setIsTrashExpanded] = useState(false);
     const [isProductExpanded, setIsProductExpanded] = useState(false);
 
@@ -36,16 +34,6 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
         setConfirmConfig({ ...confirmConfig, isOpen: false });
     };
 
-    const addStaff = () => {
-        if (newStaffName.trim() && !staffNames.includes(newStaffName.trim())) {
-            setStaffNames([...staffNames, newStaffName.trim()]);
-            setNewStaffName('');
-        }
-    };
-
-    const removeStaff = (name) => {
-        setStaffNames(staffNames.filter(s => s !== name));
-    };
 
     // Google Sheets Sync Logic
     useEffect(() => {
@@ -260,81 +248,7 @@ export default function Settings({ onResetData, jobsCount, staffNames, setStaffN
                 </button>
             </div>
 
-            {/* Employee Management Section */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div
-                    onClick={() => setIsStaffExpanded(!isStaffExpanded)}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '20px',
-                        cursor: 'pointer',
-                        background: isStaffExpanded ? 'rgba(255,255,255,0.02)' : 'transparent',
-                        transition: 'background 0.2s'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000' }}>
-                            <Info size={14} />
-                        </div>
-                        <h3 style={{ margin: 0 }}>직원 등록 및 관리</h3>
-                    </div>
-                    {isStaffExpanded ? <ChevronUp size={20} color="var(--text-muted)" /> : <ChevronDown size={20} color="var(--text-muted)" />}
-                </div>
-
-                {isStaffExpanded && (
-                    <div className="animate-fade-in" style={{ padding: '0 20px 20px 20px', borderTop: '1px solid var(--glass-border)' }}>
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', marginTop: '16px' }}>
-                            <input
-                                type="text"
-                                value={newStaffName}
-                                onChange={(e) => setNewStaffName(e.target.value)}
-                                placeholder="직원 이름"
-                                style={{ flex: 1, padding: '10px 16px', borderRadius: '12px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', color: 'white' }}
-                                onKeyPress={(e) => e.key === 'Enter' && addStaff()}
-                            />
-                            <button
-                                onClick={addStaff}
-                                className="btn btn-primary"
-                                style={{ padding: '0 20px', whiteSpace: 'nowrap' }}
-                            >
-                                등록
-                            </button>
-                        </div>
-
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                            {staffNames.map(name => (
-                                <div
-                                    key={name}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        padding: '6px 12px',
-                                        background: 'rgba(255,255,255,0.05)',
-                                        border: '1px solid var(--glass-border)',
-                                        borderRadius: '20px',
-                                        fontSize: '14px'
-                                    }}
-                                >
-                                    {name}
-                                    <X
-                                        size={14}
-                                        style={{ cursor: 'pointer', color: 'var(--text-muted)' }}
-                                        onClick={() => removeStaff(name)}
-                                    />
-                                </div>
-                            ))}
-                            {staffNames.length === 0 && (
-                                <div style={{ width: '100%', textAlign: 'center', padding: '10px', color: 'var(--text-muted)', fontSize: '14px' }}>
-                                    등록된 직원이 없습니다.
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
+            {/* Trash Bin Section */}
 
             {/* Product Database Management */}
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
