@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../firebase/config';
+import {
+    signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
+    GoogleAuthProvider
+} from 'firebase/auth';
 import { LogIn, KeyRound, Mail } from 'lucide-react';
 
 export default function Login() {
@@ -9,15 +16,53 @@ export default function Login() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
+    // Redirect 로그인 결과 처리
+    useEffect(() => {
+        const handleRedirectResult = async () => {
+            try {
+                const result = await getRedirectResult(auth);
+                if (result) {
+                    // 로그인 성공 - AuthContext가 자동으로 처리
+                    console.log('모바일 로그인 성공:', result.user.email);
+                }
+            } catch (error) {
+                console.error('모바일 로그인 에러:', error);
+                if (error.code !== 'auth/popup-closed-by-user') {
+                    setError('로그인 중 오류가 발생했습니다. 다시 시도해주세요.');
+                }
+                setLoading(false);
+            }
+        };
+        handleRedirectResult();
+    }, []);
+
     const handleGoogleLogin = async () => {
         try {
-            setError('');
             setLoading(true);
-            await loginWithGoogle();
-        } catch (err) {
-            setError('Google 로그인에 실패했습니다. 관리자에게 문의하세요.');
-            console.error(err);
-        } finally {
+            setError('');
+
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({
+                prompt: 'select_account'
+            });
+
+            // 모바일 기기 감지
+            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+            if (isMobile) {
+                // 모바일: Redirect 방식 사용
+                console.log('모바일 감지 - Redirect 방식 사용');
+                await signInWithRedirect(auth, provider);
+                // Redirect 되므로 로딩은 계속 유지
+            } else {
+                // PC: Popup 방식 사용
+                console.log('PC - Popup 방식 사용');
+                await signInWithPopup(auth, provider);
+                setLoading(false);
+            }
+        } catch (error) {
+            console.error('로그인 에러:', error);
+            setError('로그인 중 오류가 발생했습니다: ' + error.message);
             setLoading(false);
         }
     };
