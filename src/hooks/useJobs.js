@@ -1,15 +1,35 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue, set, push, update, remove, serverTimestamp, get } from 'firebase/database';
-import { rtdb } from '../firebase/config';
+import { rtdb, auth } from '../firebase/config';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export function useJobs() {
     const [jobs, setJobs] = useState([]);
     const [deletedJobs, setDeletedJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [isAuthReady, setIsAuthReady] = useState(false);
 
-    // Read jobs from Firebase
+    // 인증 상태 감시 (보안 규칙 대응)
     useEffect(() => {
+        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+            setIsAuthReady(!!user);
+            if (!user) {
+                setJobs([]);
+                setDeletedJobs([]);
+                setError(null);
+            }
+        });
+        return () => unsubscribeAuth();
+    }, []);
+
+    // Read jobs from Firebase (Only when authenticated)
+    useEffect(() => {
+        if (!isAuthReady) return;
+
+        setError(null); // 새로운 시도 전 에러 초기화
+        setLoading(true);
+
         const jobsRef = ref(rtdb, 'processes');
         const unsubscribe = onValue(jobsRef, (snapshot) => {
             try {
@@ -17,7 +37,6 @@ export function useJobs() {
                 if (data) {
                     const jobsList = Object.keys(data).map(key => {
                         const val = data[key];
-                        // Firebase 노드 키(Push Key)를 작업의 실제 고유 ID로 사용 (핵심 해결책)
                         return {
                             ...val,
                             id: key
@@ -31,6 +50,7 @@ export function useJobs() {
                 } else {
                     setJobs([]);
                 }
+                setError(null);
             } catch (err) {
                 console.error("Firebase Read Error:", err);
                 setError("데이터를 불러오는 중 오류가 발생했습니다.");
@@ -39,11 +59,13 @@ export function useJobs() {
             }
         }, (err) => {
             console.error("Firebase Auth/Permission Error:", err);
-            setError("데이터 접근 권한이 없거나 설정이 올바르지 않습니다.");
+            // 인증이 풀린 상태에서 에러가 난 거라면 에러 표시 지양
+            if (auth.currentUser) {
+                setError("데이터 접근 권한이 없거나 설정이 올바르지 않습니다.");
+            }
             setLoading(false);
         });
 
-        // Read deleted jobs
         const deletedJobsRef = ref(rtdb, 'deleted_processes');
         const unsubscribeDeleted = onValue(deletedJobsRef, (snapshot) => {
             const data = snapshot.val();
@@ -62,7 +84,7 @@ export function useJobs() {
             unsubscribe();
             unsubscribeDeleted();
         };
-    }, []);
+    }, [isAuthReady]);
 
     const addJob = async (jobData) => {
         try {

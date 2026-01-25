@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import JobCard from './process/JobCard';
 import BatchActionBar from './process/BatchActionBar';
 import ProcessModals from './process/ProcessModals';
+import { useAuth } from '../contexts/AuthContext';
 import { statusKeys as STACK_STATUS_KEYS, STAGES, getJobStage, groupJobs } from '../utils/statusUtils';
 
 const statusKeys = STACK_STATUS_KEYS;
 
 export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDeleteJob, onEditJob, onAddJob, onPrefillRequest, filter, onClearFilter }) {
+    const { currentUser } = useAuth();
     const [selectedJob, setSelectedJob] = useState(null);
     const [confirmTarget, setConfirmTarget] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
@@ -16,6 +18,18 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
     const [editData, setEditData] = useState({});
     const [selectedGroups, setSelectedGroups] = useState(new Set());
     const [batchConfirmTarget, setBatchConfirmTarget] = useState(null);
+
+    // 로그인한 사용자의 이름을 기본값으로 설정하는 로직
+    const userName = currentUser ? (currentUser.displayName || currentUser.email?.split('@')[0] || '') : '';
+
+    useEffect(() => {
+        // 모달(단일 또는 일괄)이 열릴 때 담당자가 비어있으면 로그인 사용자 이름으로 자동 설정
+        if ((confirmTarget || batchConfirmTarget) && !selectedStaff) {
+            if (staffNames.includes(userName)) {
+                setSelectedStaff(userName);
+            }
+        }
+    }, [confirmTarget, batchConfirmTarget, selectedStaff, staffNames, userName]);
 
     const stages = STAGES.filter(s => s.key !== 'new_added').map(s => ({
         ...s,
@@ -198,7 +212,16 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                 <BatchActionBar selectedCount={selectedGroups.size} onAction={() => {
                     const groups = groupedJobs.filter(g => selectedGroups.has(g.key));
                     const validGroups = groups.filter(g => getNextStage(g.items[0]));
-                    if (validGroups.length > 0) setBatchConfirmTarget({ groups: validGroups, stageKey: getNextStage(validGroups[0].items[0]).key, label: getNextStage(validGroups[0].items[0]).label, count: validGroups.length });
+                    if (validGroups.length > 0) {
+                        const nextStage = getNextStage(validGroups[0].items[0]);
+                        setBatchConfirmTarget({
+                            groups: validGroups,
+                            stageKey: nextStage.key,
+                            label: nextStage.label,
+                            question: nextStage.question,
+                            count: validGroups.length
+                        });
+                    }
                 }} />
 
                 <ProcessModals

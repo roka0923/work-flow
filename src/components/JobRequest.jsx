@@ -1,14 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { useProducts } from '../hooks/useProducts';
+import { useAuth } from '../contexts/AuthContext';
 import { Search, Package, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staffNames }) {
+    const { currentUser } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedItem, setSelectedItem] = useState(null);
     const [quantity, setQuantity] = useState(1);
     const [isUrgent, setIsUrgent] = useState(false);
-    const [author, setAuthor] = useState('');
+
+    // 로그인한 사용자의 이름을 기본값으로 설정
+    const defaultAuthor = currentUser ? (currentUser.displayName || currentUser.email?.split('@')[0] || '') : '';
+    const [author, setAuthor] = useState(defaultAuthor);
     const [memo, setMemo] = useState('');
+
+    // staffNames가 로드된 후에도 작성자가 비어있다면 다시 한번 기본값 체크
+    useEffect(() => {
+        if (!author && defaultAuthor && staffNames.includes(defaultAuthor)) {
+            setAuthor(defaultAuthor);
+        }
+    }, [staffNames, defaultAuthor, author]);
 
     // Use the product hook for real-time Firebase data
     const { products, loading: productsLoading, searchProducts } = useProducts();

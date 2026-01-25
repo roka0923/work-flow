@@ -84,7 +84,8 @@ export default function ProcessModals({
                 <div className="modal-overlay">
                     <div className="card modal-small" onClick={e => e.stopPropagation()}>
                         <h3>일괄 처리: {batchConfirmTarget.label}</h3>
-                        <p><strong>{batchConfirmTarget.count}건</strong>의 작업을 이동합니다.</p>
+                        <p style={{ marginBottom: '4px' }}><strong>{batchConfirmTarget.count}건</strong>의 작업을 이동합니다.</p>
+                        <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>{batchConfirmTarget.question}</p>
                         <StaffSelector selectedStaff={selectedStaff} setSelectedStaff={setSelectedStaff} staffNames={staffNames} />
                         <div className="modal-actions">
                             <button onClick={() => { setBatchConfirmTarget(null); setSelectedStaff(''); }} className="btn btn-secondary">취소</button>
