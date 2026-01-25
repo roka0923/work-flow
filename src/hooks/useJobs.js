@@ -216,25 +216,15 @@ export function useJobs() {
     const updateJobStatus = async (targetIds, newStage, staffName = '시스템') => {
         const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
 
-        console.log('--- updateJobStatus Start ---');
-        console.log('IDs to update:', ids, 'NewStage:', newStage, 'Staff:', staffName);
-
         for (const id of ids) {
-            if (!id || id === 'undefined') {
-                console.warn('⚠️ Invalid ID skipped:', id);
-                continue;
-            }
+            if (!id || id === 'undefined') continue;
 
             const targetJob = jobs.find(j => j.id === id);
-            if (!targetJob) {
-                console.error('❌ Job not found in local state!', id);
-                continue;
-            }
+            if (!targetJob) continue;
 
             const groupId = targetJob.groupId;
             const { id: _, ...metaData } = targetJob;
 
-            // 히스토리 항목 준비
             const historyItem = {
                 stage: newStage,
                 staffName: staffName,
@@ -245,38 +235,27 @@ export function useJobs() {
                 ? [...targetJob.history, historyItem]
                 : [historyItem];
 
-            // status 객체 업데이트 (기존 공정 체크 상태 보존 및 새 공정 + 이전 공정 체크)
             const currentStatus = (typeof targetJob.status === 'object' && targetJob.status !== null)
                 ? targetJob.status
                 : { waiting: false, disassembly: false, plating_release: false, assembly_wait: false, complete: false };
 
-            // 공정 순서 정의 (statusUtils.js와 동일하게 맞춤)
             const statusOrder = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
             const newStageIndex = statusOrder.indexOf(newStage);
-
-            // 새 상태 객체 생성
             const updatedStatus = { ...currentStatus };
 
-            // 새 단계가 'complete'인 경우 처리
             if (newStage === 'complete' || newStage === '생산완료') {
-                // 모든 단계 완료 처리
                 statusOrder.forEach(key => updatedStatus[key] = true);
                 updatedStatus.complete = true;
                 updatedStatus.생산완료 = true;
             } else if (newStageIndex !== -1) {
-                // 현재 단계와 그 이전 단계들을 모두 true로 설정
                 for (let i = 0; i <= newStageIndex; i++) {
                     updatedStatus[statusOrder[i]] = true;
                 }
             } else {
-                // 예외: 순서에 없는 키 (신규추가 등) - 보통 여기로 오면 안됨
                 updatedStatus[newStage] = true;
             }
 
-
             updatedStatus.lastUpdated = new Date().toISOString();
-
-
 
             const updateData = {
                 ...metaData,
@@ -286,77 +265,77 @@ export function useJobs() {
                 history: updatedHistory
             };
 
-            // 실제 Firebase 업데이트
-            await update(ref(rtdb, `processes/${id}`), updateData);
+            try {
+                // 실제 Firebase 업데이트
+                await update(ref(rtdb, `processes/${id}`), updateData);
 
-            // 공정 변경 알림 표시
-            const job = jobs.find(j => j.id === id);
-            if (job && job.stage !== newStage) {
-                notifyProcessChange(
-                    job.product || '제품',
-                    job.stage,
-                    newStage,
-                    auth.currentUser?.displayName || auth.currentUser?.email || '담당자'
-                );
-            }
-
-            // 그룹 업데이트 (한 번만 호출될 때 자동 연동)
-            if (groupId && !Array.isArray(targetIds)) {
-                const groupJobs = jobs.filter(j => j.groupId === groupId && j.id !== id);
-                for (const job of groupJobs) {
-                    const { id: gId, ...gMeta } = job;
-                    const gHistory = Array.isArray(job.history)
-                        ? [...job.history, historyItem]
-                        : [historyItem];
-
-                    // 그룹 파트너도 동일한 로직으로 상태 업데이트
-                    const gCurrentStatus = (typeof job.status === 'object' && job.status !== null)
-                        ? job.status
-                        : { waiting: false, disassembly: false, plating_release: false, assembly_wait: false, complete: false };
-
-                    const gUpdatedStatus = { ...gCurrentStatus };
-
-                    if (newStage === 'complete' || newStage === '생산완료') {
-                        statusOrder.forEach(key => gUpdatedStatus[key] = true);
-                        gUpdatedStatus.complete = true;
-                        gUpdatedStatus.생산완료 = true;
-                    } else if (newStageIndex !== -1) {
-                        for (let i = 0; i <= newStageIndex; i++) {
-                            gUpdatedStatus[statusOrder[i]] = true;
-                        }
-                    } else {
-                        gUpdatedStatus[newStage] = true;
-                    }
-
-                    const gUpdateData = {
-                        ...gMeta,
-                        stage: newStage,
-                        status: gUpdatedStatus,
-                        updatedAt: Date.now(),
-                        history: gHistory
-                    };
-                    await update(ref(rtdb, `processes/${gId}`), gUpdateData);
+                // 공정 변경 알림 표시
+                const job = jobs.find(j => j.id === id);
+                if (job && job.stage !== newStage) {
+                    notifyProcessChange(
+                        job.product || '제품',
+                        job.stage,
+                        newStage,
+                        auth.currentUser?.displayName || auth.currentUser?.email || '담당자'
+                    );
                 }
-            }
-        } catch (error) {
-            console.error(`❌ Update Failed for ${id}:`, error);
-            setError("상태 업데이트 실패: " + error.message);
-        }
-    }
-};
 
-return {
-    jobs,
-    deletedJobs,
-    loading,
-    error,
-    addJob,
-    editJob,
-    deleteJob,
-    restoreJob,
-    permanentDeleteJob,
-    clearDeletedJobs,
-    resetJobs,
-    updateJobStatus
-};
+                // 그룹 업데이트 (한 번만 호출될 때 자동 연동)
+                if (groupId && !Array.isArray(targetIds)) {
+                    const groupJobs = jobs.filter(j => j.groupId === groupId && j.id !== id);
+                    for (const gJob of groupJobs) {
+                        const { id: gId, ...gMeta } = gJob;
+                        const gHistory = Array.isArray(gJob.history)
+                            ? [...gJob.history, historyItem]
+                            : [historyItem];
+
+                        const gCurrentStatus = (typeof gJob.status === 'object' && gJob.status !== null)
+                            ? gJob.status
+                            : { waiting: false, disassembly: false, plating_release: false, assembly_wait: false, complete: false };
+
+                        const gUpdatedStatus = { ...gCurrentStatus };
+
+                        if (newStage === 'complete' || newStage === '생산완료') {
+                            statusOrder.forEach(key => gUpdatedStatus[key] = true);
+                            gUpdatedStatus.complete = true;
+                            gUpdatedStatus.생산완료 = true;
+                        } else if (newStageIndex !== -1) {
+                            for (let i = 0; i <= newStageIndex; i++) {
+                                gUpdatedStatus[statusOrder[i]] = true;
+                            }
+                        } else {
+                            gUpdatedStatus[newStage] = true;
+                        }
+
+                        const gUpdateData = {
+                            ...gMeta,
+                            stage: newStage,
+                            status: gUpdatedStatus,
+                            updatedAt: Date.now(),
+                            history: gHistory
+                        };
+                        await update(ref(rtdb, `processes/${gId}`), gUpdateData);
+                    }
+                }
+            } catch (error) {
+                console.error(`❌ Update Failed for ${id}:`, error);
+                setError("상태 업데이트 실패: " + error.message);
+            }
+        }
+    };
+
+    return {
+        jobs,
+        deletedJobs,
+        loading,
+        error,
+        addJob,
+        editJob,
+        deleteJob,
+        restoreJob,
+        permanentDeleteJob,
+        clearDeletedJobs,
+        resetJobs,
+        updateJobStatus
+    };
 }
