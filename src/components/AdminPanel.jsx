@@ -6,6 +6,7 @@ import { UserCog, Shield } from 'lucide-react';
 export default function AdminPanel() {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [editingId, setEditingId] = useState(null);
     const [editName, setEditName] = useState('');
 
@@ -14,6 +15,8 @@ export default function AdminPanel() {
     }, []);
 
     const fetchUsers = async () => {
+        setLoading(true);
+        setError(null);
         try {
             const querySnapshot = await getDocs(collection(db, "users"));
             const userList = querySnapshot.docs.map(doc => ({
@@ -21,8 +24,12 @@ export default function AdminPanel() {
                 ...doc.data()
             }));
             setUsers(userList);
+            if (userList.length === 0) {
+                console.warn("No users found in Firestore 'users' collection.");
+            }
         } catch (error) {
             console.error("Error fetching users:", error);
+            setError(error.message || "사용자 목록을 불러오는 중 오류가 발생했습니다.");
         } finally {
             setLoading(false);
         }
@@ -66,6 +73,20 @@ export default function AdminPanel() {
             </div>
 
             <div className="card-list">
+                {error && (
+                    <div className="card" style={{ border: '1px solid var(--danger)', color: 'var(--danger)', textAlign: 'center', padding: '20px' }}>
+                        <p><strong>오류 발생:</strong> {error}</p>
+                        <p style={{ fontSize: '12px', marginTop: '8px' }}>Firestore 보안 규칙 또는 권한 설정을 확인해 주세요.</p>
+                        <button onClick={fetchUsers} className="btn-secondary" style={{ marginTop: '10px' }}>다시 시도</button>
+                    </div>
+                )}
+
+                {!error && users.length === 0 && (
+                    <div className="card" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px' }}>
+                        등록된 사용자가 없습니다. 첫 로그인이 완료되어야 목록에 나타납니다.
+                    </div>
+                )}
+
                 {users.map(user => (
                     <div key={user.id} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ flex: 1 }}>
