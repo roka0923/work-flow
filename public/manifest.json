@@ -1,0 +1,17 @@
+{
+    "name": "대한사 생산관리",
+    "short_name": "대한사",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#0f172a",
+    "description": "재제조 브레이크 캘리퍼 공정 관리 시스템",
+    "icons": [
+        {
+            "src": "/daehansa logo workflow.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ref, onValue } from 'firebase/database';
-import { rtdb } from '../firebase/config';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 export const useProducts = () => {
     const [products, setProducts] = useState([]);
@@ -8,28 +8,27 @@ export const useProducts = () => {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        // Load all products from Firebase and cache in state
-        const productsRef = ref(rtdb, 'products');
-        const unsubscribe = onValue(productsRef, (snapshot) => {
+        // Load only domestic products from Firestore
+        const q = query(
+            collection(db, 'products'),
+            where('origin', '==', '국산')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             try {
-                const data = snapshot.val();
-                if (data) {
-                    const productsArray = Object.entries(data).map(([id, product]) => ({
-                        id,
-                        ...product
-                    }));
-                    setProducts(productsArray);
-                } else {
-                    setProducts([]);
-                }
+                const productsArray = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                setProducts(productsArray);
                 setLoading(false);
             } catch (err) {
-                console.error("Firebase Products Read Error:", err);
+                console.error("Firestore Products Read Error:", err);
                 setError("품목 정보를 불러오는 중 오류가 발생했습니다.");
                 setLoading(false);
             }
         }, (err) => {
-            console.error("Firebase Products Subscription Error:", err);
+            console.error("Firestore Products Subscription Error:", err);
             setError(err.message);
             setLoading(false);
         });

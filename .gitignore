@@ -7,3 +7,6 @@ package-lock.json
 
 # Local Netlify folder
 .netlify
+
+# Firebase Service Account
+serviceAccountKey.json

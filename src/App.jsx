@@ -19,6 +19,33 @@ function AppContent() {
     const [processFilter, setProcessFilter] = useState(null);
     const [prefillData, setPrefillData] = useState(null);
 
+    // 모바일 뒤로가기 종료 방지 및 탭 내비게이션
+    useEffect(() => {
+        // 최초 진입 시 히스토리 스택 하나 추가
+        window.history.pushState({ entry: true }, '');
+
+        const handlePopState = (e) => {
+            if (activeTab !== 'dashboard') {
+                // 대시보드가 아닐 때 뒤로가기를 누르면 대시보드로 이동
+                setActiveTab('dashboard');
+                window.history.pushState({ entry: true }, '');
+            } else {
+                // 대시보드에서 뒤로가기를 누르면 종료 확인
+                if (window.confirm("대한사 생산관리 앱을 종료하시겠습니까?")) {
+                    // 확인 시 히스토리 스택을 비워 실제 뒤로가기(종료)가 일어나게 함
+                    // 하지만 브라우저 보안상 실제 종료는 어려우므로 이전 페이지로 보냄
+                    window.history.back();
+                } else {
+                    // 취소 시 다시 히스토리 주입하여 현재 페이지 유지
+                    window.history.pushState({ entry: true }, '');
+                }
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [activeTab]); // activeTab이 바뀔 때 리스너를 갱신하여 현재 상태 기준 로직 실행
+
     const {
         jobs,
         deletedJobs,

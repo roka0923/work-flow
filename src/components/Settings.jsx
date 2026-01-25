@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2, Link as LinkIcon, RefreshCw, Activity } from 'lucide-react';
 import { ref, update, get, remove, serverTimestamp } from 'firebase/database';
-import { rtdb } from '../firebase/config';
+import { collection, query, where, getCountFromServer } from 'firebase/firestore';
+import { rtdb, db } from '../firebase/config';
 import versionInfo from '../config/version.json';
 import { debugFirebaseStructure } from '../utils/debugFirebase';
 
@@ -35,19 +36,15 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
     };
 
 
-    // Google Sheets Sync Logic
+    // Firestore Products Count (Domestic Only)
     useEffect(() => {
         const fetchProductsCount = async () => {
             try {
-                const productsRef = ref(rtdb, 'products');
-                const snapshot = await get(productsRef);
-                if (snapshot.exists()) {
-                    setProductsCount(Object.keys(snapshot.val()).length);
-                } else {
-                    setProductsCount(0);
-                }
+                const q = query(collection(db, 'products'), where('origin', '==', '국산'));
+                const snapshot = await getCountFromServer(q);
+                setProductsCount(snapshot.data().count);
             } catch (err) {
-                console.error("Error fetching products count:", err);
+                console.error("Error fetching products count from Firestore:", err);
             }
         };
         fetchProductsCount();
@@ -322,25 +319,16 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
                             </div>
 
                             <button
-                                onClick={handleSyncFromSheets}
-                                disabled={!sheetsUrl || syncing}
-                                className="btn btn-primary btn-full"
+                                onClick={() => alert('Firestore 통합 후 시트 동기화는 현재 비활성화되었습니다. 데이터 수정이 필요하시면 관리자에게 문의하세요.')}
+                                className="btn btn-secondary btn-full"
                                 style={{
                                     height: '48px',
-                                    fontSize: '15px'
+                                    fontSize: '15px',
+                                    opacity: 0.6
                                 }}
                             >
-                                {syncing ? (
-                                    <>
-                                        <RefreshCw size={18} className="animate-spin" style={{ marginRight: '8px' }} />
-                                        {syncProgress}
-                                    </>
-                                ) : (
-                                    <>
-                                        <RefreshCw size={18} style={{ marginRight: '8px' }} />
-                                        Google Sheets에서 동기화
-                                    </>
-                                )}
+                                <RefreshCw size={18} style={{ marginRight: '8px' }} />
+                                Google Sheets 동기화 (비활성)
                             </button>
 
                             {syncMessage && (
