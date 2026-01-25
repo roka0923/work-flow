@@ -10,6 +10,7 @@ import {
     doc,
     getDoc,
     setDoc,
+    onSnapshot,
     serverTimestamp
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';

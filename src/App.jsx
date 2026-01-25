@@ -136,7 +136,7 @@ function AppContent() {
                     setActiveTab('process');
                 }} />;
             case 'request':
-                return isAdmin ? <JobRequest onAddJob={handleAddJob} prefillData={prefillData} onClearPrefill={() => setPrefillData(null)} staffNames={staffNames} /> : <div>권한이 없습니다.</div>;
+                return canRequest ? <JobRequest onAddJob={handleAddJob} prefillData={prefillData} onClearPrefill={() => setPrefillData(null)} staffNames={staffNames} /> : <div>권한이 없습니다.</div>;
             case 'process':
                 return (
                     <ProcessList
@@ -152,7 +152,7 @@ function AppContent() {
                     />
                 );
             case 'settings':
-                return isAdmin ? <Settings
+                return canSettings ? <Settings
                     jobsCount={jobs.length}
                     onResetData={handleResetData}
                     staffNames={staffNames}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, updateDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { UserCog, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
