@@ -2,65 +2,20 @@ import React from 'react';
 import { Activity, CheckCircle2, AlertTriangle, Package } from 'lucide-react';
 import StatCard from './dashboard/StatCard';
 import QueueCard from './dashboard/QueueCard';
-import { statusKeys, STAGES, getJobStage } from '../utils/statusUtils';
+import { statusKeys, STAGES, getJobStage, groupJobs } from '../utils/statusUtils';
 
 export default function Dashboard({ jobs, onStageClick }) {
 
-    // Group jobs by groupId (falling back to id)
-    const groupedJobs = [];
-    const groupMap = new Map();
-
-    jobs.forEach(job => {
-        const key = job.groupId || job.id;
-        const stage = getJobStage(job);
-
-        if (!groupMap.has(key)) {
-            const group = {
-                key,
-                items: [job],
-                urgent: job.urgent || false,
-                complete: job.status?.complete || false,
-                minStage: stage,
-                minStageIndex: statusKeys.indexOf(stage) === -1 ? -1 : statusKeys.indexOf(stage)
-            };
-            groupMap.set(key, group);
-            groupedJobs.push(group);
-        } else {
-            const g = groupMap.get(key);
-            g.items.push(job);
-            if (job.urgent) g.urgent = true;
-            if (!job.status?.complete) g.complete = false;
-
-            // 그룹의 단계는 구성 요소 중 가장 뒤처진 단계를 따름 (예: 하나라도 분해대기면 그룹 전체가 분해대기)
-            const currentStageIndex = statusKeys.indexOf(stage);
-            if (currentStageIndex !== -1 && (g.minStageIndex === -1 || currentStageIndex < g.minStageIndex)) {
-                g.minStageIndex = currentStageIndex;
-                g.minStage = stage;
-            } else if (stage === 'new_added' && g.minStage !== 'new_added') {
-                // 신규추가는 statusKeys에 없으므로 별도 처리 (-1 인덱스)
-                g.minStage = 'new_added';
-                g.minStageIndex = -1;
-            }
-        }
-    });
+    const groupedJobs = groupJobs(jobs);
 
     const activeJobs = groupedJobs.filter(g => !g.complete).length;
     const completedJobs = groupedJobs.filter(g => g.complete).length;
     const urgentJobs = groupedJobs.filter(g => g.urgent && !g.complete).length;
 
-    const stages = [
-        { key: 'new_added', label: '신규추가', color: '#60a5fa' },
-        { key: 'waiting', label: '분해대기', color: '#f59e0b' },
-        { key: 'disassembly', label: '분해완료', color: '#10b981' },
-        { key: 'plating_release', label: '도금출고', color: '#8b5cf6' },
-        { key: 'assembly_wait', label: '조립대기', color: '#06b6d4' },
-        { key: 'complete', label: '생산완료', color: '#22c55e' }
-    ];
-
     const getStageStats = (stageKey) => {
         return groupedJobs.filter(g => {
-            const finalStage = (g.minStage === undefined) ? 'new_added' : g.minStage;
-            return finalStage === stageKey;
+            if (stageKey === 'complete') return g.complete;
+            return !g.complete && g.currentStage === stageKey;
         }).length;
     };
 

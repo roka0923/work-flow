@@ -1,7 +1,7 @@
 import React from 'react';
 import { Home, PlusCircle, List, Settings } from 'lucide-react';
 
-export function Layout({ children, activeTab, setActiveTab }) {
+export function Layout({ children, activeTab, setActiveTab, tabs }) {
     return (
         <div className="layout">
             <main className="main-content">
@@ -9,34 +9,16 @@ export function Layout({ children, activeTab, setActiveTab }) {
             </main>
 
             <nav className="nav-bar glass">
-                <div
-                    className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('dashboard')}
-                >
-                    <Home size={24} />
-                    <span style={{ fontSize: '10px' }}>대시보드</span>
-                </div>
-                <div
-                    className={`nav-item ${activeTab === 'request' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('request')}
-                >
-                    <PlusCircle size={24} />
-                    <span style={{ fontSize: '10px' }}>작업지시</span>
-                </div>
-                <div
-                    className={`nav-item ${activeTab === 'process' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('process')}
-                >
-                    <List size={24} />
-                    <span style={{ fontSize: '10px' }}>공정관리</span>
-                </div>
-                <div
-                    className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('settings')}
-                >
-                    <Settings size={24} />
-                    <span style={{ fontSize: '10px' }}>설정</span>
-                </div>
+                {tabs.map(tab => (
+                    <div
+                        key={tab.id}
+                        className={`nav-item ${activeTab === tab.id ? 'active' : ''}`}
+                        onClick={() => setActiveTab(tab.id)}
+                    >
+                        {tab.icon}
+                        <span style={{ fontSize: '10px' }}>{tab.label}</span>
+                    </div>
+                ))}
             </nav>
         </div>
     );

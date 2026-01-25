@@ -13,21 +13,73 @@ export const getJobStage = (job) => {
     // 1. 상태 객체가 없는 경우
     if (!job || !job.status) return 'new_added';
 
-    // 2. 모든 공정이 완료된 경우
+    // 2. 모든 공정이 완료된 경우 (별도 플래그 확인)
     if (job.status.complete) return 'complete';
 
-    // 3. 첫 번째 미완료 공정 찾기 (이 공정의 '대기' 상태로 간주)
-    const firstIncompleteIndex = statusKeys.findIndex(key => !job.status[key]);
+    // 3. 역순으로 확인하여 가장 먼저 'true'인 상태를 반환 (현재 도달한 단계)
+    const processKeys = ['waiting', 'disassembly', 'plating_release', 'assembly_wait'];
 
-    // 4. 모든 상태가 false인 경우 (새로 추가된 상태)
-    if (firstIncompleteIndex === 0 && Object.values(job.status).every(v => v === false)) {
-        return 'new_added';
+    // 배열 뒤에서부터 확인
+    for (let i = processKeys.length - 1; i >= 0; i--) {
+        const key = processKeys[i];
+        if (job.status[key]) {
+            return key;
+        }
     }
 
-    // 5. 중간 단계가 미완료라면 해당 단계가 현재 단계
-    if (firstIncompleteIndex !== -1) {
-        return statusKeys[firstIncompleteIndex];
-    }
+    // 4. 아무것도 true가 아니면 신규추가
+    return 'new_added';
+};
 
-    return 'complete';
+/**
+ * 작업을 그룹화하고 그룹의 현재 단계를 결정합니다.
+ * 세트 제품(LH+RH)은 더 느린 공정 단계를 기준으로 그룹의 단계가 결정됩니다.
+ */
+export const groupJobs = (jobs) => {
+    const groupMap = new Map();
+    const groupedJobs = [];
+
+    jobs.forEach(job => {
+        const key = job.groupId || job.id;
+        const stage = getJobStage(job);
+
+        if (!groupMap.has(key)) {
+            const group = {
+                key,
+                id: job.id, // 대표 ID
+                code: job.code,
+                model: job.model,
+                base: job.model.replace(/\s+(LH|RH)$/i, '').trim(),
+                items: [job],
+                urgent: job.urgent || false,
+                complete: job.status?.complete || false,
+                requestDate: job.requestDate,
+                memo: job.memo || '',
+                currentStage: stage,
+                stageIndex: stage === 'new_added' ? -1 : (stage === 'complete' ? 99 : statusKeys.indexOf(stage))
+            };
+            groupMap.set(key, group);
+            groupedJobs.push(group);
+        } else {
+            const g = groupMap.get(key);
+            g.items.push(job);
+            if (job.urgent) g.urgent = true;
+            if (!job.status?.complete) g.complete = false;
+            if (job.requestDate && (!g.requestDate || new Date(job.requestDate) < new Date(g.requestDate))) {
+                g.requestDate = job.requestDate;
+            }
+            if (job.memo && !g.memo.includes(job.memo)) {
+                g.memo = g.memo ? `${g.memo}\n${job.memo}` : job.memo;
+            }
+
+            // 그룹의 단계 결정 (가장 느린 단계 기준)
+            const stageIndex = stage === 'new_added' ? -1 : (stage === 'complete' ? 99 : statusKeys.indexOf(stage));
+            if (stageIndex < g.stageIndex) {
+                g.stageIndex = stageIndex;
+                g.currentStage = stage;
+            }
+        }
+    });
+
+    return groupedJobs;
 };

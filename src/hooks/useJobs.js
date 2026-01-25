@@ -238,32 +238,31 @@ export function useJobs() {
                 ? targetJob.status
                 : { waiting: false, disassembly: false, plating_release: false, assembly_wait: false, complete: false };
 
-            // 공정 순서 정의
+            // 공정 순서 정의 (statusUtils.js와 동일하게 맞춤)
             const statusOrder = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
             const newStageIndex = statusOrder.indexOf(newStage);
 
             // 새 상태 객체 생성
             const updatedStatus = { ...currentStatus };
 
-            // 현재 단계와 그 이전 단계들을 모두 true로 설정
-            if (newStageIndex !== -1) {
+            // 새 단계가 'complete'인 경우 처리
+            if (newStage === 'complete' || newStage === '생산완료') {
+                // 모든 단계 완료 처리
+                statusOrder.forEach(key => updatedStatus[key] = true);
+                updatedStatus.complete = true;
+                updatedStatus.생산완료 = true;
+            } else if (newStageIndex !== -1) {
+                // 현재 단계와 그 이전 단계들을 모두 true로 설정
                 for (let i = 0; i <= newStageIndex; i++) {
                     updatedStatus[statusOrder[i]] = true;
                 }
             } else {
-                // 예외: 순서에 없는 키가 들어온 경우 해당 키만 true 처리
+                // 예외: 순서에 없는 키 (신규추가 등) - 보통 여기로 오면 안됨
                 updatedStatus[newStage] = true;
             }
 
-            updatedStatus.lastUpdated = new Date().toISOString();
 
-            // 생산완료 또는 complete 키에 대한 상호 호환성 처리
-            if (newStage === '생산완료' || newStage === 'complete') {
-                updatedStatus.complete = true;
-                updatedStatus.생산완료 = true;
-                // 모든 단계 완료 처리
-                statusOrder.forEach(key => updatedStatus[key] = true);
-            }
+            updatedStatus.lastUpdated = new Date().toISOString();
 
 
 
@@ -295,20 +294,16 @@ export function useJobs() {
 
                         const gUpdatedStatus = { ...gCurrentStatus };
 
-                        if (newStageIndex !== -1) {
+                        if (newStage === 'complete' || newStage === '생산완료') {
+                            statusOrder.forEach(key => gUpdatedStatus[key] = true);
+                            gUpdatedStatus.complete = true;
+                            gUpdatedStatus.생산완료 = true;
+                        } else if (newStageIndex !== -1) {
                             for (let i = 0; i <= newStageIndex; i++) {
                                 gUpdatedStatus[statusOrder[i]] = true;
                             }
                         } else {
                             gUpdatedStatus[newStage] = true;
-                        }
-
-                        gUpdatedStatus.lastUpdated = new Date().toISOString();
-
-                        if (newStage === '생산완료' || newStage === 'complete') {
-                            gUpdatedStatus.complete = true;
-                            gUpdatedStatus.생산완료 = true;
-                            statusOrder.forEach(key => gUpdatedStatus[key] = true);
                         }
 
                         const gUpdateData = {

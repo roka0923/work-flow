@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import JobCard from './process/JobCard';
 import BatchActionBar from './process/BatchActionBar';
 import ProcessModals from './process/ProcessModals';
-import { statusKeys as STACK_STATUS_KEYS, STAGES, getJobStage } from '../utils/statusUtils';
+import { statusKeys as STACK_STATUS_KEYS, STAGES, getJobStage, groupJobs } from '../utils/statusUtils';
 
 const statusKeys = STACK_STATUS_KEYS;
 
@@ -17,7 +17,7 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
     const [selectedGroups, setSelectedGroups] = useState(new Set());
     const [batchConfirmTarget, setBatchConfirmTarget] = useState(null);
 
-    const stages = STAGES.filter(s => s.key !== 'new_added' && s.key !== 'complete').map(s => ({
+    const stages = STAGES.filter(s => s.key !== 'new_added').map(s => ({
         ...s,
         question: s.key === 'waiting' ? '분해 할 품목이 공장에 입고되었나요?' :
             s.key === 'disassembly' ? '분해가 완료되었나요?' :
@@ -34,70 +34,26 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         return null;
     };
 
-    const filteredJobs = jobs.filter(job => {
-        const currentStage = getJobStage(job);
-        if (filter === 'finished') return job.status.complete;
-        if (filter === 'new_added') return currentStage === 'new_added';
-        if (!filter) return !job.status.complete;
-        if (filter === 'urgent') return job.urgent && !job.status.complete;
+    const groupedJobs = groupJobs(jobs);
 
-        // 대시보드 필터와 현재 단계가 일치하는 경우만 표시
-        return currentStage === filter;
-    });
+    const filteredGroups = groupedJobs.filter(group => {
+        if (filter === 'finished' || filter === 'complete') return group.complete;
+        if (filter === 'urgent') return group.urgent && !group.complete;
+        if (filter === 'new_added') return group.currentStage === 'new_added';
+        if (!filter) return true; // 필터가 없을 때는 모든 공정(완료 포함)을 보여줌
 
-    const getBaseModel = (model) => {
-        if (!model) return '품목명 없음';
-        return model.replace(/\s+(LH|RH)$/i, '').trim();
-    };
-
-    const groupMap = new Map();
-    const groupedJobs = [];
-
-    filteredJobs.forEach(job => {
-        const key = job.groupId || job.id;
-        const stage = getJobStage(job);
-
-
-        if (!groupMap.has(key)) {
-            const group = {
-                key,
-                base: getBaseModel(job.model),
-                items: [job],
-                urgent: job.urgent || false,
-                requestDate: job.requestDate,
-                code: job.code,
-                minStage: stage,
-                minStageIndex: statusKeys.indexOf(stage) === -1 ? -1 : statusKeys.indexOf(stage)
-            };
-            groupMap.set(key, group);
-            groupedJobs.push(group);
-        } else {
-            const g = groupMap.get(key);
-            g.items.push(job);
-            if (job.urgent) g.urgent = true;
-            if (job.memo) g.memo = job.memo;
-            if (job.requestDate && (!g.requestDate || new Date(job.requestDate) < new Date(g.requestDate))) {
-                g.requestDate = job.requestDate;
-            }
-
-            // 그룹의 단계 결정 (가장 느린 단계 기준)
-            const currentStageIndex = statusKeys.indexOf(stage);
-            if (currentStageIndex !== -1 && (g.minStageIndex === -1 || currentStageIndex < g.minStageIndex)) {
-                g.minStageIndex = currentStageIndex;
-                g.minStage = stage;
-            } else if (stage === 'new_added') {
-                g.minStage = 'new_added';
-                g.minStageIndex = -1;
-            }
-        }
+        // 대시보드에서 넘어온 특정 공정 필터 (신규추가 제외 일반 공정들)
+        return !group.complete && group.currentStage === filter;
     });
 
     const jobsByStage = {};
     STAGES.forEach(stage => {
-        jobsByStage[stage.key] = groupedJobs.filter(g => g.minStage === stage.key);
+        jobsByStage[stage.key] = filteredGroups.filter(g => g.currentStage === stage.key);
     });
 
-    const stagesToShow = STAGES.filter(stage => (jobsByStage[stage.key]?.length > 0) && (filter === 'complete' || stage.key !== 'complete'));
+    const stagesToShow = STAGES.filter(stage =>
+        jobsByStage[stage.key]?.length > 0
+    );
 
     const handleConfirmStatus = () => {
         if (confirmTarget && selectedStaff) {
@@ -109,10 +65,25 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
 
     const handleBatchConfirmStatus = () => {
         if (batchConfirmTarget && selectedStaff) {
+            // 일괄 처리 시에도 각 그룹별로 정확한 다음 단계를 계산하여 업데이트
+            // batchConfirmTarget.groups에는 이미 "다음 단계가 있는" 유효한 그룹들만 필터링되어 있음.
+            // 하지만 안전을 위해 다시 한번 각 그룹의 items에 대해 다음 단계를 계산.
+
+            // 동일한 다음 단계를 가진 그룹끼리 묶어서 처리하거나, 개별 loop 처리
+            // 여기서는 단순화를 위해 모아서 처리하지만, 만약 그룹마다 "다음 단계"가 다르면(그럴 일은 드물겠지만) 로직이 복잡해짐.
+            // batch action bar에서 이미 "같은 다음 단계"를 가진 것들만 묶었는지 확인 필요.
+            // 현재 BatchActionBar 로직: const validGroups = groups.filter(g => getNextStage(g.items[0]));
+            // 그리고 setBatchConfirmTarget에 stageKey를 하나만 넣고 있음. 
+            // 이는 "선택된 모든 항목이 같은 다음 단계일 때"만 유효하거나, 아니면 "각자 갈 길을 가게" 해야 함.
+
+            // 개선: 각 아이템별로 자신의 nextStage로 업데이트하도록 변경
             batchConfirmTarget.groups.forEach(group => {
                 const nextStage = getNextStage(group.items[0]);
-                if (nextStage) onUpdateStatus(group.items.map(j => j.id), nextStage.key, selectedStaff);
+                if (nextStage) {
+                    onUpdateStatus(group.items.map(j => j.id), nextStage.key, selectedStaff);
+                }
             });
+
             setBatchConfirmTarget(null);
             setSelectedStaff('');
             setSelectedGroups(new Set());
@@ -135,9 +106,9 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         setIsEditing(false);
     };
 
-    const handleStageChange = (jobId, newStageKey) => {
+    const handleStageChange = (jobId, requestedStageKey) => {
         console.log('=== ProcessList: 공정 변경 요청 ===');
-        console.log('🎯 Job ID:', jobId, 'New Stage Key:', newStageKey);
+        console.log('🎯 Job ID:', jobId, 'Requested Key:', requestedStageKey);
 
         const job = jobs.find(j => j.id === jobId);
         if (!job) {
@@ -145,15 +116,25 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
             return;
         }
 
-        const targetStage = stages.find(s => s.key === newStageKey);
-        const stageLabel = targetStage ? targetStage.label : newStageKey;
-        const question = targetStage ? targetStage.question : `${stageLabel} 상태로 변경하시겠습니까?`;
+        // 클릭한 단계와 상관없이, 현재 상태의 "다음 단계"를 계산하여 강제 이동
+        const nextStage = getNextStage(job);
 
-        console.log('📌 팝업 설정:', { label: stageLabel, question });
+        if (!nextStage) {
+            console.warn('⚠️ 더 이상 이동할 수 있는 공정이 없습니다.');
+            return;
+        }
+
+        // 사용자가 클릭한 단계가 다음 단계와 다르더라도, 다음 단계로 안내 (또는 무시하고 다음 단계 진행)
+        // 여기서는 "다음 단계"로 컨펌 팝업을 띄웁니다.
+        const targetStage = nextStage;
+        const stageLabel = targetStage.label;
+        const question = targetStage.question;
+
+        console.log('📌 강제 다음 단계 설정:', { label: stageLabel, question });
 
         setConfirmTarget({
-            jobIds: [jobId], // 단일 ID도 배열로 전달
-            stageKey: newStageKey,
+            jobIds: [jobId],
+            stageKey: targetStage.key,
             label: stageLabel,
             question: question
         });
