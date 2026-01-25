@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue, set, push, update, remove, serverTimestamp, get } from 'firebase/database';
-import { rtdb } from '../firebase/config';
+import { rtdb, auth } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
+import { notifyProcessChange } from '../utils/notifications';
 
 export function useJobs() {
     const [jobs, setJobs] = useState([]);
@@ -285,67 +286,77 @@ export function useJobs() {
                 history: updatedHistory
             };
 
-            try {
-                // 실제 Firebase 업데이트
-                await update(ref(rtdb, `processes/${id}`), updateData);
+            // 실제 Firebase 업데이트
+            await update(ref(rtdb, `processes/${id}`), updateData);
 
-                // 그룹 업데이트 (한 번만 호출될 때 자동 연동)
-                if (groupId && !Array.isArray(targetIds)) {
-                    const groupJobs = jobs.filter(j => j.groupId === groupId && j.id !== id);
-                    for (const job of groupJobs) {
-                        const { id: gId, ...gMeta } = job;
-                        const gHistory = Array.isArray(job.history)
-                            ? [...job.history, historyItem]
-                            : [historyItem];
-
-                        // 그룹 파트너도 동일한 로직으로 상태 업데이트
-                        const gCurrentStatus = (typeof job.status === 'object' && job.status !== null)
-                            ? job.status
-                            : { waiting: false, disassembly: false, plating_release: false, assembly_wait: false, complete: false };
-
-                        const gUpdatedStatus = { ...gCurrentStatus };
-
-                        if (newStage === 'complete' || newStage === '생산완료') {
-                            statusOrder.forEach(key => gUpdatedStatus[key] = true);
-                            gUpdatedStatus.complete = true;
-                            gUpdatedStatus.생산완료 = true;
-                        } else if (newStageIndex !== -1) {
-                            for (let i = 0; i <= newStageIndex; i++) {
-                                gUpdatedStatus[statusOrder[i]] = true;
-                            }
-                        } else {
-                            gUpdatedStatus[newStage] = true;
-                        }
-
-                        const gUpdateData = {
-                            ...gMeta,
-                            stage: newStage,
-                            status: gUpdatedStatus,
-                            updatedAt: Date.now(),
-                            history: gHistory
-                        };
-                        await update(ref(rtdb, `processes/${gId}`), gUpdateData);
-                    }
-                }
-            } catch (error) {
-                console.error(`❌ Update Failed for ${id}:`, error);
-                setError("상태 업데이트 실패: " + error.message);
+            // 공정 변경 알림 표시
+            const job = jobs.find(j => j.id === id);
+            if (job && job.stage !== newStage) {
+                notifyProcessChange(
+                    job.product || '제품',
+                    job.stage,
+                    newStage,
+                    auth.currentUser?.displayName || auth.currentUser?.email || '담당자'
+                );
             }
-        }
-    };
 
-    return {
-        jobs,
-        deletedJobs,
-        loading,
-        error,
-        addJob,
-        editJob,
-        deleteJob,
-        restoreJob,
-        permanentDeleteJob,
-        clearDeletedJobs,
-        resetJobs,
-        updateJobStatus
-    };
+            // 그룹 업데이트 (한 번만 호출될 때 자동 연동)
+            if (groupId && !Array.isArray(targetIds)) {
+                const groupJobs = jobs.filter(j => j.groupId === groupId && j.id !== id);
+                for (const job of groupJobs) {
+                    const { id: gId, ...gMeta } = job;
+                    const gHistory = Array.isArray(job.history)
+                        ? [...job.history, historyItem]
+                        : [historyItem];
+
+                    // 그룹 파트너도 동일한 로직으로 상태 업데이트
+                    const gCurrentStatus = (typeof job.status === 'object' && job.status !== null)
+                        ? job.status
+                        : { waiting: false, disassembly: false, plating_release: false, assembly_wait: false, complete: false };
+
+                    const gUpdatedStatus = { ...gCurrentStatus };
+
+                    if (newStage === 'complete' || newStage === '생산완료') {
+                        statusOrder.forEach(key => gUpdatedStatus[key] = true);
+                        gUpdatedStatus.complete = true;
+                        gUpdatedStatus.생산완료 = true;
+                    } else if (newStageIndex !== -1) {
+                        for (let i = 0; i <= newStageIndex; i++) {
+                            gUpdatedStatus[statusOrder[i]] = true;
+                        }
+                    } else {
+                        gUpdatedStatus[newStage] = true;
+                    }
+
+                    const gUpdateData = {
+                        ...gMeta,
+                        stage: newStage,
+                        status: gUpdatedStatus,
+                        updatedAt: Date.now(),
+                        history: gHistory
+                    };
+                    await update(ref(rtdb, `processes/${gId}`), gUpdateData);
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Update Failed for ${id}:`, error);
+            setError("상태 업데이트 실패: " + error.message);
+        }
+    }
+};
+
+return {
+    jobs,
+    deletedJobs,
+    loading,
+    error,
+    addJob,
+    editJob,
+    deleteJob,
+    restoreJob,
+    permanentDeleteJob,
+    clearDeletedJobs,
+    resetJobs,
+    updateJobStatus
+};
 }
