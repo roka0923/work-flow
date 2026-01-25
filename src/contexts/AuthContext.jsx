@@ -30,6 +30,7 @@ export function AuthProvider({ children }) {
         worker: { canRequest: false, canDelete: false, canSettings: false }
     });
     const [loading, setLoading] = useState(true);
+    const [isAuthReady, setIsAuthReady] = useState(false);
 
     // 글로벌 권한 설정 실시간 수신
     useEffect(() => {
@@ -50,6 +51,7 @@ export function AuthProvider({ children }) {
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            setLoading(true);
             try {
                 if (user) {
                     // 로그인 된 경우 Firestore에서 사용자 정보(Role) 조회
@@ -84,6 +86,7 @@ export function AuthProvider({ children }) {
                 setCurrentUser(user || null);
                 setUserRole('worker'); // 에러 시 기본 권한이라도 부여하거나, 아예 null
             } finally {
+                setIsAuthReady(true);
                 setLoading(false);
             }
         });
@@ -161,6 +164,8 @@ export function AuthProvider({ children }) {
         loginWithGoogle,
         loginWithEmail,
         logout,
+        loading,
+        isAuthReady,
         isAdmin: userRole === 'admin',
         isManager: userRole === 'manager' || userRole === 'admin',
         canRequest: checkPermission('request'),
@@ -170,7 +175,7 @@ export function AuthProvider({ children }) {
 
     return (
         <AuthContext.Provider value={value}>
-            {!loading && children}
+            {children}
         </AuthContext.Provider>
     );
 }
