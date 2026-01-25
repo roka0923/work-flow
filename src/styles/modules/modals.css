@@ -68,6 +68,17 @@
     padding: 12px;
     color: white;
     font-size: 16px;
+    outline: none;
+}
+
+select.input-field {
+    background-color: #1e293b; /* 불투명한 어두운 배경으로 옵션 가독성 확보 */
+    cursor: pointer;
+}
+
+.input-field option {
+    background-color: #1e293b;
+    color: white;
 }
 
 .staff-selector {

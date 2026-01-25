@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { UserCog, Shield } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function AdminPanel() {
+    const { permissions: authContextPermissions } = useAuth();
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -15,21 +17,23 @@ export default function AdminPanel() {
     }, []);
 
     const fetchUsers = async () => {
+        console.log("AdminPanel: fetchUsers started. DB instance:", !!db);
         setLoading(true);
         setError(null);
         try {
+            if (!db) {
+                throw new Error("Firestore 데이터베이스가 초기화되지 않았습니다. config.js를 확인해 주세요.");
+            }
             const querySnapshot = await getDocs(collection(db, "users"));
+            console.log("AdminPanel: Snapshot received. Size:", querySnapshot.size);
             const userList = querySnapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
             setUsers(userList);
-            if (userList.length === 0) {
-                console.warn("No users found in Firestore 'users' collection.");
-            }
         } catch (error) {
-            console.error("Error fetching users:", error);
-            setError(error.message || "사용자 목록을 불러오는 중 오류가 발생했습니다.");
+            console.error("AdminPanel fetch error:", error);
+            setError(`데이터 로드 실패: ${error.message}`);
         } finally {
             setLoading(false);
         }
@@ -63,10 +67,31 @@ export default function AdminPanel() {
         }
     };
 
+    const handleSavePermission = async (role, key, value) => {
+        try {
+            const permRef = doc(db, "settings", "permissions");
+            await setDoc(permRef, {
+                ...authPermissions,
+                [role]: {
+                    ...authPermissions[role],
+                    [key]: value
+                }
+            });
+        } catch (error) {
+            console.error("Error updating permission:", error);
+            alert("권한 설정 저장 실패");
+        }
+    };
+
     if (loading) return <div>사용자 목록 로딩 중...</div>;
 
+    const authPermissions = authContextPermissions || {
+        manager: { canRequest: false, canDelete: false, canSettings: false },
+        worker: { canRequest: false, canDelete: false, canSettings: false }
+    };
+
     return (
-        <div className="animate-fade-in" style={{ paddingBottom: '80px' }}>
+        <div className="animate-fade-in" style={{ paddingBottom: '120px' }}>
             <div className="section-header">
                 <UserCog size={24} />
                 <h1>사용자 권한 관리</h1>
@@ -105,7 +130,7 @@ export default function AdminPanel() {
                                 </div>
                             ) : (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <h3 style={{ margin: 0, fontSize: '16px' }}>{user.name || user.email.split('@')[0]}</h3>
+                                    <h3 style={{ margin: 0, fontSize: '16px' }}>{user.name || user.email?.split('@')[0] || '사용자'}</h3>
                                     <button
                                         onClick={() => handleStartNameEdit(user)}
                                         style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '12px', padding: 0 }}
@@ -129,6 +154,58 @@ export default function AdminPanel() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            <div className="section-header" style={{ marginTop: '40px' }}>
+                <Shield size={24} />
+                <h1>역할별 상세 권한 설정</h1>
+            </div>
+
+            <div className="card">
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--glass-border)' }}>
+                            <th style={{ padding: '12px', fontSize: '14px', color: 'var(--text-muted)' }}>역할</th>
+                            <th style={{ padding: '12px', fontSize: '14px', color: 'var(--text-muted)', textAlign: 'center' }}>작업지시</th>
+                            <th style={{ padding: '12px', fontSize: '14px', color: 'var(--text-muted)', textAlign: 'center' }}>데이터삭제</th>
+                            <th style={{ padding: '12px', fontSize: '14px', color: 'var(--text-muted)', textAlign: 'center' }}>설정접근</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {['manager', 'worker'].map(role => (
+                            <tr key={role} style={{ borderBottom: '1px solid var(--glass-border)' }}>
+                                <td style={{ padding: '12px', fontWeight: 'bold', textTransform: 'capitalize' }}>{role}</td>
+                                <td style={{ padding: '12px', textAlign: 'center' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={authPermissions[role].canRequest}
+                                        onChange={(e) => handleSavePermission(role, 'canRequest', e.target.checked)}
+                                        className="stage-checkbox"
+                                    />
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'center' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={authPermissions[role].canDelete}
+                                        onChange={(e) => handleSavePermission(role, 'canDelete', e.target.checked)}
+                                        className="stage-checkbox"
+                                    />
+                                </td>
+                                <td style={{ padding: '12px', textAlign: 'center' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={authPermissions[role].canSettings}
+                                        onChange={(e) => handleSavePermission(role, 'canSettings', e.target.checked)}
+                                        className="stage-checkbox"
+                                    />
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                <p style={{ marginTop: '16px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                    * 관리자(Admin)는 항상 모든 권한을 가집니다. 변경 사항은 즉시 시스템 전체에 반영됩니다.
+                </p>
             </div>
         </div>
     );

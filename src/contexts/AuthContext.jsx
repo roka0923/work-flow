@@ -23,7 +23,28 @@ export function useAuth() {
 export function AuthProvider({ children }) {
     const [currentUser, setCurrentUser] = useState(null);
     const [userRole, setUserRole] = useState(null); // 'admin', 'manager', 'worker'
+    const [permissions, setPermissions] = useState({
+        manager: { canRequest: false, canDelete: false, canSettings: false },
+        worker: { canRequest: false, canDelete: false, canSettings: false }
+    });
     const [loading, setLoading] = useState(true);
+
+    // 글로벌 권한 설정 실시간 수신
+    useEffect(() => {
+        const permRef = doc(db, "settings", "permissions");
+        const unsubscribe = onSnapshot(permRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setPermissions(docSnap.data());
+            } else {
+                // 기본값 생성 (최초 1회)
+                setDoc(permRef, {
+                    manager: { canRequest: false, canDelete: false, canSettings: false },
+                    worker: { canRequest: false, canDelete: false, canSettings: false }
+                });
+            }
+        });
+        return () => unsubscribe();
+    }, []);
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -41,7 +62,7 @@ export function AuthProvider({ children }) {
                         // 신규 사용자: DB에 등록 (기본 역할: worker)
                         const newUser = {
                             email: user.email,
-                            name: user.displayName || user.email.split('@')[0],
+                            name: user.displayName || user.email?.split('@')[0] || '사용자',
                             role: 'worker',
                             createdAt: serverTimestamp()
                         };
@@ -109,14 +130,31 @@ export function AuthProvider({ children }) {
         return signOut(auth);
     };
 
+    // 역할 및 권한 체크 유틸리티
+    const checkPermission = (action) => {
+        if (userRole === 'admin') return true;
+        if (!userRole || !permissions[userRole]) return false;
+
+        switch (action) {
+            case 'request': return permissions[userRole].canRequest;
+            case 'delete': return permissions[userRole].canDelete;
+            case 'settings': return permissions[userRole].canSettings;
+            default: return false;
+        }
+    };
+
     const value = {
         currentUser,
         userRole,
+        permissions,
         loginWithGoogle,
         loginWithEmail,
         logout,
         isAdmin: userRole === 'admin',
-        isManager: userRole === 'manager' || userRole === 'admin'
+        isManager: userRole === 'manager' || userRole === 'admin',
+        canRequest: checkPermission('request'),
+        canDelete: checkPermission('delete'),
+        canSettings: checkPermission('settings')
     };
 
     return (

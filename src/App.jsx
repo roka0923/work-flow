@@ -14,7 +14,7 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from './firebase/config';
 
 function AppContent() {
-    const { currentUser, userRole, logout, isAdmin, isManager } = useAuth();
+    const { currentUser, userRole, logout, isAdmin, isManager, canRequest, canSettings } = useAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [processFilter, setProcessFilter] = useState(null);
     const [prefillData, setPrefillData] = useState(null);
@@ -42,37 +42,37 @@ function AppContent() {
 
         const q = query(collection(db, "users"), orderBy("name", "asc"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const names = snapshot.docs.map(doc => doc.data().name || doc.data().email.split('@')[0]);
+            const names = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return data.name || data.email?.split('@')[0] || '사용자';
+            });
             setStaffNames(names);
         });
 
         return () => unsubscribe();
     }, [currentUser]);
 
-    // 역할별 탭 정의
+    // 역할 및 동적 권한별 탭 정의
     const getTabs = () => {
         const tabs = [
             { id: 'dashboard', label: '대시보드', icon: <Home size={24} /> }
         ];
 
-        // manager, admin은 공정관리 접근 가능
-        if (isManager) {
-            tabs.push({ id: 'process', label: '공정관리', icon: <List size={24} /> });
-        } else {
-            // worker도 공정관리는 볼 수 있게 (본인 작업 체크용) - 요구사항 3번 worker: 자신의 작업만 조회. 
-            // 현재 구조상 worker도 공정관리 탭 자체는 접근해야 함.
-            tabs.push({ id: 'process', label: '공정관리', icon: <List size={24} /> });
+        // 모든 사용자는 공정관리 접근 가능
+        tabs.push({ id: 'process', label: '공정관리', icon: <List size={24} /> });
+
+        // 동적 권한에 따른 탭 추가
+        if (canRequest) {
+            tabs.push({ id: 'request', label: '작업지시', icon: <PlusCircle size={24} /> });
         }
 
-        // admin은 모든 탭 접근 가능 (작업지시, 설정, 관리자)
-        if (isAdmin) {
-            tabs.push({ id: 'request', label: '작업지시', icon: <PlusCircle size={24} /> });
+        if (canSettings) {
             tabs.push({ id: 'settings', label: '설정', icon: <SettingsIcon size={24} /> });
+        }
+
+        // Admin 전용 사용자관리 탭
+        if (isAdmin) {
             tabs.push({ id: 'admin', label: '사용자관리', icon: <Users size={24} /> });
-        } else if (isManager) {
-            // manager는 작업지시 불가능(요구사항), 설정은? 언급없으므로 제외 또는 포함. 
-            // 요구사항: manager: 생산 현황 조회 및 수정.
-            // 일단 manager에게 작업지시는 안줌.
         }
 
         return tabs;

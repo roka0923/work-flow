@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { CheckCircle2, Circle, Clock, MessageSquare, Trash2, Square, CheckSquare } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function JobCard({
     group,
@@ -10,6 +11,7 @@ export default function JobCard({
     onStageClick,
     stages
 }) {
+    const { canDelete } = useAuth();
     const items = group.items || [];
     const firstItem = items[0] || { status: {}, model: '정보 없음' };
     const isPair = items.length > 1;
@@ -106,17 +108,19 @@ export default function JobCard({
                                     )}
                                 </div>
                             </div>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onDelete({ ids: jobIds, model: isPair ? group.base : firstItem.model });
-                                    }}
-                                    style={{ background: 'rgba(239, 68, 68, 0.1)', border: 'none', color: 'var(--danger)', padding: '8px', borderRadius: '8px' }}
-                                >
-                                    <Trash2 size={18} />
-                                </button>
-                            </div>
+                            {canDelete && (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDelete({ ids: jobIds, model: isPair ? group.base : firstItem.model });
+                                        }}
+                                        style={{ background: 'rgba(239, 68, 68, 0.1)', border: 'none', color: 'var(--danger)', padding: '8px', borderRadius: '8px' }}
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
