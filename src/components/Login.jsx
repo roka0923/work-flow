@@ -66,7 +66,7 @@ export default function Login() {
                     }}>
                         <LogIn size={32} color="var(--primary)" />
                     </div>
-                    <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>Work Flow 로그인</h1>
+                    <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>생산관리 로그인</h1>
                     <p style={{ color: 'var(--text-muted)' }}>직원 계정으로 접속해주세요</p>
                 </div>
 

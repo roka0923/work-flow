@@ -1,33 +1,25 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue, set, push, update, remove, serverTimestamp, get } from 'firebase/database';
-import { rtdb, auth } from '../firebase/config';
-import { onAuthStateChanged } from 'firebase/auth';
+import { rtdb } from '../firebase/config';
+import { useAuth } from '../contexts/AuthContext';
 
 export function useJobs() {
     const [jobs, setJobs] = useState([]);
     const [deletedJobs, setDeletedJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
-
-    // 인증 상태 감시 (보안 규칙 대응)
-    useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-            setIsAuthReady(!!user);
-            if (!user) {
-                setJobs([]);
-                setDeletedJobs([]);
-                setError(null);
-            }
-        });
-        return () => unsubscribeAuth();
-    }, []);
+    const { currentUser } = useAuth();
 
     // Read jobs from Firebase (Only when authenticated)
     useEffect(() => {
-        if (!isAuthReady) return;
+        if (!currentUser) {
+            setLoading(false);
+            setJobs([]);
+            setDeletedJobs([]);
+            return;
+        }
 
-        setError(null); // 새로운 시도 전 에러 초기화
+        setError(null);
         setLoading(true);
 
         const jobsRef = ref(rtdb, 'processes');
@@ -59,10 +51,7 @@ export function useJobs() {
             }
         }, (err) => {
             console.error("Firebase Auth/Permission Error:", err);
-            // 인증이 풀린 상태에서 에러가 난 거라면 에러 표시 지양
-            if (auth.currentUser) {
-                setError("데이터 접근 권한이 없거나 설정이 올바르지 않습니다.");
-            }
+            setError("데이터 접근 권한이 없거나 설정이 올바르지 않습니다.");
             setLoading(false);
         });
 
@@ -84,7 +73,7 @@ export function useJobs() {
             unsubscribe();
             unsubscribeDeleted();
         };
-    }, [isAuthReady]);
+    }, [currentUser]);
 
     const addJob = async (jobData) => {
         try {

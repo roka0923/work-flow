@@ -31,7 +31,7 @@ function AppContent() {
                 window.history.pushState({ entry: true }, '');
             } else {
                 // 대시보드에서 뒤로가기를 누르면 종료 확인
-                if (window.confirm("대한사 생산관리 앱을 종료하시겠습니까?")) {
+                if (window.confirm("생산관리 앱을 종료하시겠습니까?")) {
                     // 확인 시 히스토리 스택을 비워 실제 뒤로가기(종료)가 일어나게 함
                     // 하지만 브라우저 보안상 실제 종료는 어려우므로 이전 페이지로 보냄
                     window.history.back();

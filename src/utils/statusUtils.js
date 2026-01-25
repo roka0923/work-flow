@@ -48,8 +48,8 @@ export const groupJobs = (jobs) => {
                 key,
                 id: job.id, // 대표 ID
                 code: job.code,
-                model: job.model,
-                base: job.model.replace(/\s+(LH|RH)$/i, '').trim(),
+                model: job.model || '',
+                base: (job.model || '').replace(/\s+(LH|RH)$/i, '').trim(),
                 items: [job],
                 urgent: job.urgent || false,
                 complete: job.status?.complete || false,
