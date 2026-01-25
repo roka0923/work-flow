@@ -27,34 +27,42 @@ export function AuthProvider({ children }) {
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // 로그인 된 경우 Firestore에서 사용자 정보(Role) 조회
-                const userRef = doc(db, "users", user.uid);
-                const userSnap = await getDoc(userRef);
+            try {
+                if (user) {
+                    // 로그인 된 경우 Firestore에서 사용자 정보(Role) 조회
+                    const userRef = doc(db, "users", user.uid);
+                    const userSnap = await getDoc(userRef);
 
-                if (userSnap.exists()) {
-                    // 기존 사용자: 역할 정보 가져오기
-                    const userData = userSnap.data();
-                    setUserRole(userData.role || 'worker');
+                    if (userSnap.exists()) {
+                        // 기존 사용자: 역할 정보 가져오기
+                        const userData = userSnap.data();
+                        setUserRole(userData.role || 'worker');
+                    } else {
+                        // 신규 사용자: DB에 등록 (기본 역할: worker)
+                        const newUser = {
+                            email: user.email,
+                            name: user.displayName || user.email.split('@')[0],
+                            role: 'worker',
+                            createdAt: serverTimestamp()
+                        };
+                        // 여기서 권한 문제 등으로 실패할 수 있으므로 개별 try-catch 또는 상위 catch로 유도
+                        await setDoc(userRef, newUser);
+                        setUserRole('worker');
+                    }
+                    setCurrentUser(user);
                 } else {
-                    // 신규 사용자: DB에 등록 (기본 역할: worker)
-                    // 단, 초기 관리자 설정을 위해 특정 이메일은 admin으로 설정할 수도 있음 (여기서는 생략하고 기본 worker)
-                    const newUser = {
-                        email: user.email,
-                        name: user.displayName || user.email.split('@')[0],
-                        role: 'worker',
-                        createdAt: serverTimestamp()
-                    };
-                    await setDoc(userRef, newUser);
-                    setUserRole('worker');
+                    // 로그아웃 된 경우
+                    setCurrentUser(null);
+                    setUserRole(null);
                 }
-                setCurrentUser(user);
-            } else {
-                // 로그아웃 된 경우
-                setCurrentUser(null);
-                setUserRole(null);
+            } catch (error) {
+                console.error("Auth Listener Error:", error);
+                // 에러 발생 시에도 최소한 로그아웃 상태이거나 기본 사용자 정보는 초기화
+                setCurrentUser(user || null);
+                setUserRole('worker'); // 에러 시 기본 권한이라도 부여하거나, 아예 null
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         });
 
         return unsubscribe;
