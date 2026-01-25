@@ -122,19 +122,19 @@ function AppContent() {
         }
     }, [activeTab]);
 
-    // 로그인 후 알림 권한 요청
-    useEffect(() => {
-        if (currentUser) {
-            // 로그인 성공 시 알림 권한 요청
-            requestNotificationPermission().then(granted => {
-                if (granted) {
-                    console.log('알림 권한 허용됨');
-                } else {
-                    console.log('알림 권한 거부됨 또는 지원하지 않는 브라우저');
-                }
-            });
-        }
-    }, [currentUser]);
+    // 로그인 후 알림 권한 요청 - 임시 비활성화
+    // useEffect(() => {
+    //     if (currentUser) {
+    //         // 로그인 성공 시 알림 권한 요청
+    //         requestNotificationPermission().then(granted => {
+    //             if (granted) {
+    //                 console.log('알림 권한 허용됨');
+    //             } else {
+    //                 console.log('알림 권한 거부됨 또는 지원하지 않는 브라우저');
+    //             }
+    //         });
+    //     }
+    // }, [currentUser]);
 
     if (!currentUser) {
         return <Login />;
