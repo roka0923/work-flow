@@ -45,9 +45,17 @@ export default function ProcessModals({
                         ) : (
                             <div className="detail-view">
                                 <div className="detail-header">
-                                    <div className="code">{selectedJob.code}</div>
-                                    <h1>{selectedJob.model}</h1>
-                                    <button onClick={() => startEdit(selectedJob)} className="btn btn-secondary">편집</button>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div>
+                                            <div className="code">{selectedJob.code}</div>
+                                            <h1>{selectedJob.model}</h1>
+                                        </div>
+                                        <button onClick={() => startEdit(selectedJob)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }}>편집</button>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                        <div className="badge">수량: {selectedJob.quantity || 1}개</div>
+                                        {selectedJob.urgent && <div className="badge badge-urgent"><AlertCircle size={12} style={{ marginRight: '4px' }} /> 긴급</div>}
+                                    </div>
                                 </div>
                                 <div className="memo-box">
                                     <div className="label">메모/코멘트</div>
@@ -132,10 +140,16 @@ function FormItem({ label, value, onChange, type = 'text' }) {
 function UrgentToggle({ urgent, onClick }) {
     return (
         <div className="form-item flex-1">
-            <label>긴급 여부</label>
-            <div onClick={onClick} className={`urgent-btn ${urgent ? 'active' : ''}`}>
-                <AlertCircle size={18} /> <span>긴급</span>
-            </div>
+            <label style={{ marginBottom: '8px', display: 'block' }}>긴급 여부</label>
+            <button
+                type="button"
+                onClick={onClick}
+                className={`btn ${urgent ? 'btn-danger' : 'btn-secondary'}`}
+                style={{ width: '100%', justifyContent: 'center', opacity: urgent ? 1 : 0.7 }}
+            >
+                <AlertCircle size={18} style={{ marginRight: '6px' }} />
+                {urgent ? '긴급 (ON)' : '일반 (OFF)'}
+            </button>
         </div>
     );
 }
