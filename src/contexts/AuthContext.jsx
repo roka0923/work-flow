@@ -54,9 +54,6 @@ export function AuthProvider({ children }) {
             setLoading(true);
             try {
                 if (user) {
-                    // Auth 세션 안정화 대기
-                    await new Promise(resolve => setTimeout(resolve, 500));
-
                     // 로그인 된 경우 Firestore에서 사용자 정보(Role) 조회
                     const userRef = doc(db, "users", user.uid);
                     const userSnap = await getDoc(userRef);

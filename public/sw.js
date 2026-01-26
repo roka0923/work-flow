@@ -32,8 +32,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // 1. 외부 요청이나 POST 등은 네트워크만 사용
-    if (event.request.method !== 'GET' || url.origin !== self.location.origin) {
+    // 1. 외부 요청, POST, Firebase Auth 관련 경로, Query Parameter가 있는 요청은 SW 건너뛰기
+    // (Auth Redirect 시 URL 파라미터가 유실되면 안됨)
+    if (
+        event.request.method !== 'GET' ||
+        url.origin !== self.location.origin ||
+        url.pathname.startsWith('/__/') ||
+        url.search !== ''
+    ) {
         return;
     }
 
