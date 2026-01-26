@@ -46,20 +46,11 @@ export default function Login() {
                 prompt: 'select_account'
             });
 
-            // 모바일 기기 감지
-            const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-            if (isMobile) {
-                // 모바일: Redirect 방식 사용
-                console.log('모바일 감지 - Redirect 방식 사용');
-                await signInWithRedirect(auth, provider);
-                // Redirect 되므로 로딩은 계속 유지
-            } else {
-                // PC: Popup 방식 사용
-                console.log('PC - Popup 방식 사용');
-                await signInWithPopup(auth, provider);
-                setLoading(false);
-            }
+            // 모바일 Redirect 방식 제거 -> PC와 동일하게 Popup 방식 사용
+            // (Redirect 시 발생하는 무한 루프 및 세션 유실 문제 방지)
+            console.log('Google 로그인 시도 (Popup)');
+            await signInWithPopup(auth, provider);
+            setLoading(false);
         } catch (error) {
             console.error('로그인 에러:', error);
             setError('로그인 중 오류가 발생했습니다: ' + error.message);

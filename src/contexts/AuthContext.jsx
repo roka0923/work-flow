@@ -115,16 +115,9 @@ export function AuthProvider({ children }) {
     const loginWithGoogle = async () => {
         const provider = new GoogleAuthProvider();
         // 모바일 기기 감지
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
         try {
-            if (isMobile) {
-                // 모바일은 리다이렉트 방식 (PWA/Standalone 호환성 높음)
-                await signInWithRedirect(auth, provider);
-            } else {
-                // PC는 기존 팝업 방식
-                await signInWithPopup(auth, provider);
-            }
+            // 모바일/PC 모두 Popup 방식 통일 (Redirect 호환성 문제 해결)
+            await signInWithPopup(auth, provider);
         } catch (error) {
             console.error("Google Login Error:", error);
             throw error;
