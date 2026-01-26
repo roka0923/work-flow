@@ -122,16 +122,70 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
 
     const handleStageChange = (jobId, requestedStageKey) => {
         console.log('=== ProcessList: 공정 변경 요청 ===');
-        console.log('🎯 Job ID:', jobId, 'Requested Key:', requestedStageKey);
-
         const job = jobs.find(j => j.id === jobId);
+
         if (!job) {
             console.error('❌ 오류: job을 찾을 수 없음!', jobId);
             return;
         }
 
-        // 클릭한 단계와 상관없이, 현재 상태의 "다음 단계"를 계산하여 강제 이동
-        const nextStage = getNextStage(job);
+        // 그룹(세트) 처리 로직
+        let targetJobs = [job];
+        let currentEffectiveStage = getJobStage(job);
+
+        // 그룹ID가 있다면 그룹 전체를 찾아서 "가장 느린 단계"를 기준으로 다음 단계 결정
+        if (job.groupId) {
+            const groupItems = jobs.filter(j => j.groupId === job.groupId);
+            if (groupItems.length > 0) {
+                targetJobs = groupItems;
+
+                // 그룹 내에서 가장 느린(인덱스가 낮은) 단계 찾기
+                let minIndex = 999;
+                let minStage = currentEffectiveStage;
+
+                groupItems.forEach(item => {
+                    const stage = getJobStage(item);
+                    // 완료된 상태는 인덱스 고려 제외 (이미 끝난 건 무시하고 진행 중인 것 기준)
+                    // 단, 모든 아이템이 완료된 경우면 complete가 됨
+                    if (stage === 'complete') return;
+
+                    const idx = statusKeys.indexOf(stage);
+                    // new_added(-1)인 경우 가장 우선순위 높음
+                    if (idx === -1) {
+                        if (minIndex > -1) { minIndex = -1; minStage = 'new_added'; }
+                    } else if (idx < minIndex) {
+                        minIndex = idx;
+                        minStage = stage;
+                    }
+                });
+
+                // 모든 아이템이 complete라서 loop에서 걸러졌다면?
+                // minIndex가 여전히 999. 그렇다면 'complete' 상태임.
+                if (minIndex === 999) {
+                    // 모든 아이템이 완료 상태인지 확인
+                    const allComplete = groupItems.every(j => getJobStage(j) === 'complete');
+                    if (allComplete) minStage = 'complete';
+                    else {
+                        // 섞여있는데 complete가 아닌 녀석이 new_added일 수도 있음. 
+                        // 상기 로직에서 new_added는 idx=-1로 잡힘.
+                        // 즉 여기 도달하면 뭔가 이상하지만, 안전하게 첫번째 아이템 기준 fallback
+                        minStage = getJobStage(job);
+                    }
+                }
+
+                currentEffectiveStage = minStage;
+            }
+        }
+
+        console.log('🎯 Target Jobs:', targetJobs.length, 'Effective Current Stage:', currentEffectiveStage);
+
+        // 다음 단계 계산 (현재 유효 단계 기준)
+        // getNextStage 함수를 재사용하되, 가상의 job 객체를 주입하여 계산
+        const mockJobForCalc = { status: { [currentEffectiveStage]: true } };
+        if (currentEffectiveStage === 'complete') mockJobForCalc.status.complete = true;
+        if (currentEffectiveStage === 'new_added') mockJobForCalc.status = {};
+
+        const nextStage = getNextStage(mockJobForCalc);
 
         if (!nextStage) {
             console.warn('⚠️ 더 이상 이동할 수 있는 공정이 없습니다.');
@@ -139,7 +193,6 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         }
 
         // 사용자가 클릭한 단계가 다음 단계와 다르더라도, 다음 단계로 안내 (또는 무시하고 다음 단계 진행)
-        // 여기서는 "다음 단계"로 컨펌 팝업을 띄웁니다.
         const targetStage = nextStage;
         const stageLabel = targetStage.label;
         const question = targetStage.question;
@@ -147,7 +200,7 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         console.log('📌 강제 다음 단계 설정:', { label: stageLabel, question });
 
         setConfirmTarget({
-            jobIds: [jobId],
+            jobIds: targetJobs.map(j => j.id), // 그룹 전체 ID 포함
             stageKey: targetStage.key,
             label: stageLabel,
             question: question
