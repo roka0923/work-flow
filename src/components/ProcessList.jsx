@@ -77,22 +77,56 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         }
     };
 
+    const [collapsedStages, setCollapsedStages] = useState(new Set());
+
+    const toggleCollapse = (stageKey) => {
+        const newCollapsed = new Set(collapsedStages);
+        if (newCollapsed.has(stageKey)) newCollapsed.delete(stageKey);
+        else newCollapsed.add(stageKey);
+        setCollapsedStages(newCollapsed);
+    };
+
+    const toggleCollapseAll = () => {
+        if (collapsedStages.size === stagesToShow.length) {
+            setCollapsedStages(new Set()); // Expand All
+        } else {
+            setCollapsedStages(new Set(stagesToShow.map(s => s.key))); // Collapse All
+        }
+    };
+
     const handleBatchConfirmStatus = () => {
         if (batchConfirmTarget && selectedStaff) {
-            // 일괄 처리 시에도 각 그룹별로 정확한 다음 단계를 계산하여 업데이트
-            // batchConfirmTarget.groups에는 이미 "다음 단계가 있는" 유효한 그룹들만 필터링되어 있음.
-            // 하지만 안전을 위해 다시 한번 각 그룹의 items에 대해 다음 단계를 계산.
-
-            // 동일한 다음 단계를 가진 그룹끼리 묶어서 처리하거나, 개별 loop 처리
-            // 여기서는 단순화를 위해 모아서 처리하지만, 만약 그룹마다 "다음 단계"가 다르면(그럴 일은 드물겠지만) 로직이 복잡해짐.
-            // batch action bar에서 이미 "같은 다음 단계"를 가진 것들만 묶었는지 확인 필요.
-            // 현재 BatchActionBar 로직: const validGroups = groups.filter(g => getNextStage(g.items[0]));
-            // 그리고 setBatchConfirmTarget에 stageKey를 하나만 넣고 있음. 
-            // 이는 "선택된 모든 항목이 같은 다음 단계일 때"만 유효하거나, 아니면 "각자 갈 길을 가게" 해야 함.
-
-            // 개선: 각 아이템별로 자신의 nextStage로 업데이트하도록 변경
             batchConfirmTarget.groups.forEach(group => {
-                const nextStage = getNextStage(group.items[0]);
+                // Fix: Batch update should also check effective group stage, not just first item
+                let currentEffectiveStage = getJobStage(group.items[0]);
+
+                // Logic from handleStageChange to find slowest item
+                if (group.items.length > 0) {
+                    let minIndex = 999;
+                    let minStage = currentEffectiveStage;
+                    group.items.forEach(item => {
+                        const stage = getJobStage(item);
+                        if (stage === 'complete') return;
+                        const idx = statusKeys.indexOf(stage);
+                        if (idx === -1) {
+                            if (minIndex > -1) { minIndex = -1; minStage = 'new_added'; }
+                        } else if (idx < minIndex) {
+                            minIndex = idx;
+                            minStage = stage;
+                        }
+                    });
+                    if (minIndex === 999) {
+                        const allComplete = group.items.every(j => getJobStage(j) === 'complete');
+                        if (allComplete) minStage = 'complete';
+                    }
+                    currentEffectiveStage = minStage;
+                }
+
+                const mockJob = { status: { [currentEffectiveStage]: true } };
+                if (currentEffectiveStage === 'complete') mockJob.status.complete = true;
+                if (currentEffectiveStage === 'new_added') mockJob.status = {};
+
+                const nextStage = getNextStage(mockJob);
                 if (nextStage) {
                     onUpdateStatus(group.items.map(j => j.id), nextStage.key, selectedStaff);
                 }
@@ -166,7 +200,7 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                     const allComplete = groupItems.every(j => getJobStage(j) === 'complete');
                     if (allComplete) minStage = 'complete';
                     else {
-                        // 섞여있는데 complete가 아닌 녀석이 new_added일 수도 있음. 
+                        // 섞여있는데 complete가 아닌 녀석이 new_added일 수도 있음.
                         // 상기 로직에서 new_added는 idx=-1로 잡힘.
                         // 즉 여기 도달하면 뭔가 이상하지만, 안전하게 첫번째 아이템 기준 fallback
                         minStage = getJobStage(job);
@@ -227,6 +261,9 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h1>공정 관리</h1>
                     <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={toggleCollapseAll} className="btn-secondary">
+                            {collapsedStages.size === stagesToShow.length ? '모두 펼치기' : '모두 접기'}
+                        </button>
                         {selectedGroups.size > 0 && <button onClick={() => setSelectedGroups(new Set())} className="btn-secondary">선택 해제</button>}
                         {filter && <button onClick={onClearFilter} className="btn-secondary">필터 해제 <X size={14} /></button>}
                     </div>
@@ -238,25 +275,31 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                     ) : (
                         stagesToShow.map(stage => (
                             <div key={stage.key}>
-                                <div className="section-header" onClick={() => handleToggleStage(stage.key)} style={{ cursor: 'pointer' }}>
+                                <div className="section-header" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', flex: 1 }} onClick={() => toggleCollapse(stage.key)}>
+                                        <span style={{ marginRight: '8px', transform: collapsedStages.has(stage.key) ? 'rotate(-90deg)' : 'rotate(0deg)', transition: '0.2s' }}>▼</span>
+                                        <span>{stage.label}</span>
+                                        <span className="badge" style={{ marginLeft: '8px' }}>{jobsByStage[stage.key].length}건</span>
+                                    </div>
                                     <input
                                         type="checkbox"
                                         checked={jobsByStage[stage.key].every(g => selectedGroups.has(g.key))}
-                                        readOnly
+                                        onChange={() => handleToggleStage(stage.key)}
                                         className="stage-checkbox"
+                                        style={{ marginLeft: 'auto' }}
                                     />
-                                    <span>{stage.label}</span>
-                                    <span className="badge">{jobsByStage[stage.key].length}건</span>
                                 </div>
-                                <div className="card-list">
-                                    {jobsByStage[stage.key].map(group => (
-                                        <JobCard
-                                            key={group.key} group={group} isSelected={selectedGroups.has(group.key)}
-                                            onToggleSelection={(key) => { const n = new Set(selectedGroups); if (n.has(key)) n.delete(key); else n.add(key); setSelectedGroups(n); }}
-                                            onDelete={setDeleteTarget} onDetailClick={setSelectedJob} onStageClick={handleStageChange} stages={stages}
-                                        />
-                                    ))}
-                                </div>
+                                {!collapsedStages.has(stage.key) && (
+                                    <div className="card-list">
+                                        {jobsByStage[stage.key].map(group => (
+                                            <JobCard
+                                                key={group.key} group={group} isSelected={selectedGroups.has(group.key)}
+                                                onToggleSelection={(key) => { const n = new Set(selectedGroups); if (n.has(key)) n.delete(key); else n.add(key); setSelectedGroups(n); }}
+                                                onDelete={setDeleteTarget} onDetailClick={setSelectedJob} onStageClick={handleStageChange} stages={stages}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ))
                     )}

@@ -56,7 +56,7 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
 
     const filteredItems = searchProducts(searchTerm);
 
-    const [isSetRegistration, setIsSetRegistration] = useState(false);
+    const [isSetRegistration, setIsSetRegistration] = useState(true);
 
     const handleSubmit = (e) => {
         e.preventDefault();
