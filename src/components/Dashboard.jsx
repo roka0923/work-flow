@@ -3,6 +3,7 @@ import { Activity, CheckCircle2, AlertTriangle, Package } from 'lucide-react';
 import StatCard from './dashboard/StatCard';
 import QueueCard from './dashboard/QueueCard';
 import { statusKeys, STAGES, getJobStage, groupJobs } from '../utils/statusUtils';
+import versionInfo from '../config/version.json';
 
 export default function Dashboard({ jobs, onStageClick }) {
 
@@ -74,6 +75,10 @@ export default function Dashboard({ jobs, onStageClick }) {
                 <div style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
                     상세 확인을 원하는 공정 카드를 클릭하면 해당 단계의 품목들을 모아서 보실 수 있습니다.
                 </div>
+            </div>
+
+            <div style={{ textAlign: 'center', marginTop: '20px', color: 'var(--text-muted)', fontSize: '11px', opacity: 0.7 }}>
+                v{versionInfo.version} ({versionInfo.lastUpdated})
             </div>
         </div>
     );
