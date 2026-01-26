@@ -5,8 +5,23 @@ import { collection, query, where, getCountFromServer } from 'firebase/firestore
 import { rtdb, db } from '../firebase/config';
 import versionInfo from '../config/version.json';
 import { debugFirebaseStructure } from '../utils/debugFirebase';
+import { requestNotificationPermission } from '../utils/notifications';
 
 export default function Settings({ onResetData, jobsCount, deletedJobs = [], onRestoreJob, onPermanentDelete, onClearTrash }) {
+    const [notificationEnabled, setNotificationEnabled] = useState(
+        "Notification" in window && Notification.permission === "granted"
+    );
+
+    const handleEnableNotifications = async () => {
+        const granted = await requestNotificationPermission();
+        setNotificationEnabled(granted);
+        if (granted) {
+            alert("✅ 브라우저 알림이 활성화되었습니다!");
+        } else {
+            alert("❌ 알림 권한이 거부되었습니다. 브라우저 설정에서 변경할 수 있습니다.");
+        }
+    };
+
     const [confirmConfig, setConfirmConfig] = useState({
         isOpen: false,
         title: '',
@@ -211,6 +226,43 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
     return (
         <div className="animate-fade-in">
             <h1>설정</h1>
+
+            {/* Notification Settings */}
+            <div className="card" style={{ marginBottom: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                    <div style={{ padding: '6px', borderRadius: '50%', background: 'rgba(34, 211, 238, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '18px' }}>🔔</span>
+                    </div>
+                    <div>
+                        <h3 style={{ margin: 0 }}>브라우저 알림</h3>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                            작업 상태 변경 시 실시간으로 알림을 받습니다.
+                        </p>
+                    </div>
+                </div>
+                <button
+                    onClick={handleEnableNotifications}
+                    className={notificationEnabled ? "btn-secondary btn-full" : "btn-primary btn-full"}
+                    disabled={notificationEnabled}
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        height: '46px',
+                        fontSize: '14px'
+                    }}
+                >
+                    {notificationEnabled ? (
+                        <>
+                            <CheckCircle2 size={16} color="var(--success)" />
+                            알림이 활성화되었습니다
+                        </>
+                    ) : (
+                        "알림 허용하기"
+                    )}
+                </button>
+            </div>
 
             <div className="card">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>

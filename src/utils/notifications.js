@@ -1,7 +1,7 @@
 // 브라우저 알림 권한 요청
 export const requestNotificationPermission = async () => {
     if (!("Notification" in window)) {
-        console.log("이 브라우저는 알림을 지원하지 않습니다.");
+        console.log("브라우저가 알림을 지원하지 않습니다");
         return false;
     }
 
@@ -32,9 +32,9 @@ export const showNotification = (title, options = {}) => {
             navigator.serviceWorker.ready.then(registration => {
                 registration.showNotification(title, config);
             }).catch(err => {
-                // ServiceWorker 방식 실패 시 (혹은 PC) 기존 방식 시도
                 console.warn('SW Notification failed, trying fallback:', err);
                 try {
+                    // PC 등 SW 실패 시 일반 Notification 시도
                     const notification = new Notification(title, config);
                     notification.onclick = () => {
                         window.focus();
@@ -45,14 +45,13 @@ export const showNotification = (title, options = {}) => {
                 }
             });
         } else {
-            // ServiceWorker가 없는 환경 (구형 브라우저 등)
+            // ServiceWorker가 없는 환경
             try {
                 const notification = new Notification(title, config);
                 notification.onclick = () => {
                     window.focus();
                     notification.close();
                 };
-                return notification;
             } catch (e) {
                 console.error('Notification constructor failed:', e);
             }
@@ -61,17 +60,9 @@ export const showNotification = (title, options = {}) => {
 };
 
 // 공정 변경 알림
-export const notifyProcessChange = (product, fromStage, toStage, worker) => {
-    const stages = {
-        disassembly: "분해",
-        plating: "도금",
-        assembly: "조립",
-        inspection: "검사",
-        shipping: "출고",
-    };
-
+export const notifyProcessChange = (modelName, fromStage, toStage, assignee) => {
     showNotification("🔔 공정 변경 알림", {
-        body: `${product}\n${stages[fromStage]} → ${stages[toStage]}\n담당: ${worker}`,
+        body: `${modelName}\n${fromStage} → ${toStage}\n담당: ${assignee}`,
         tag: "process-change",
         requireInteraction: false,
     });

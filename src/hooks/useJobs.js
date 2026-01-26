@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ref, onValue, set, push, update, remove, serverTimestamp, get } from 'firebase/database';
 import { rtdb, auth } from '../firebase/config';
 import { useAuth } from '../contexts/AuthContext';
 import { notifyProcessChange } from '../utils/notifications';
+import { STAGES } from '../utils/statusUtils';
 
 export function useJobs() {
     const [jobs, setJobs] = useState([]);
@@ -11,12 +12,16 @@ export function useJobs() {
     const [error, setError] = useState(null);
     const { currentUser } = useAuth();
 
+    // 이전 작업 상태 추적을 위한 Ref (알림 발생용)
+    const previousJobsRef = useRef({});
+
     // Read jobs from Firebase (Only when authenticated)
     useEffect(() => {
         if (!currentUser) {
             setLoading(false);
             setJobs([]);
             setDeletedJobs([]);
+            previousJobsRef.current = {};
             return;
         }
 
@@ -34,14 +39,54 @@ export function useJobs() {
                             ...val,
                             id: key
                         };
-                    }).sort((a, b) => {
+                    });
+
+                    // 알림 로직: 변경 사항 감지
+                    // 최초 로드 시에는 previousJobsRef가 비어있으므로 알림이 발생하지 않음 (의도된 동작)
+                    jobsList.forEach(job => {
+                        const prevJob = previousJobsRef.current[job.id];
+
+                        // 이전 상태가 있고, 단계(stage)가 변경되었을 때만 알림
+                        if (prevJob && prevJob.stage !== job.stage) {
+                            if (Notification.permission === "granted") {
+                                // 단계 라벨 찾기 (예: waiting -> 분해대기)
+                                const fromStageLabel = STAGES.find(s => s.key === prevJob.stage)?.label || prevJob.stage;
+                                const toStageLabel = STAGES.find(s => s.key === job.stage)?.label || job.stage;
+
+                                // 담당자 찾기 (History의 마지막 항목 or 없으면 '담당자')
+                                const lastHistory = Array.isArray(job.history) && job.history.length > 0
+                                    ? job.history[job.history.length - 1]
+                                    : null;
+                                const assigneeName = lastHistory?.staffName || "담당자";
+
+                                notifyProcessChange(
+                                    job.model || job.code || "제품",
+                                    fromStageLabel,
+                                    toStageLabel,
+                                    assigneeName
+                                );
+                            }
+                        }
+                    });
+
+                    // 현재 상태를 스냅샷으로 저장
+                    const currentSnapshot = {};
+                    jobsList.forEach(job => {
+                        currentSnapshot[job.id] = { stage: job.stage };
+                    });
+                    previousJobsRef.current = currentSnapshot;
+
+                    // 정렬 및 상태 업데이트
+                    const sortedList = jobsList.sort((a, b) => {
                         const timeA = typeof a.updatedAt === 'number' ? a.updatedAt : (a.updatedAt?.seconds ? a.updatedAt.seconds * 1000 : new Date(a.updatedAt).getTime() || 0);
                         const timeB = typeof b.updatedAt === 'number' ? b.updatedAt : (b.updatedAt?.seconds ? b.updatedAt.seconds * 1000 : new Date(b.updatedAt).getTime() || 0);
                         return timeB - timeA;
                     });
-                    setJobs(jobsList);
+                    setJobs(sortedList);
+
                 } else {
                     setJobs([]);
+                    previousJobsRef.current = {};
                 }
                 setError(null);
             } catch (err) {
@@ -73,6 +118,9 @@ export function useJobs() {
         return () => {
             unsubscribe();
             unsubscribeDeleted();
+            // 언마운트 시 previousJobsRef는 유지되지만 (Ref 특성), useEffect가 다시 실행되면 초기화됨 (위쪽 if(!currentUser) 블록 참조)
+            // 하지만 currentUser가 있는 상태에서 언마운트->마운트 시에는 초기화가 필요할 수도 있음.
+            // 여기서는 Ref라 컴포넌트 생명주기 따름.
         };
     }, [currentUser]);
 
@@ -269,16 +317,10 @@ export function useJobs() {
                 // 실제 Firebase 업데이트
                 await update(ref(rtdb, `processes/${id}`), updateData);
 
-                // 공정 변경 알림 표시
-                const job = jobs.find(j => j.id === id);
-                if (job && job.stage !== newStage) {
-                    notifyProcessChange(
-                        job.product || '제품',
-                        job.stage,
-                        newStage,
-                        auth.currentUser?.displayName || auth.currentUser?.email || '담당자'
-                    );
-                }
+                // [변경된 로직]
+                // 기존의 notifyProcessChange 직접 호출을 제거했습니다.
+                // 이제 onValue 리스너가 DB 변경을 감지하여 자동으로 알림을 보냅니다.
+                // 이를 통해 다른 클라이언트(다른 사용자)에게도 브로드캐스트가 가능해집니다.
 
                 // 그룹 업데이트 (한 번만 호출될 때 자동 연동)
                 if (groupId && !Array.isArray(targetIds)) {
