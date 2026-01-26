@@ -48,9 +48,18 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         return null;
     };
 
+    const [searchTerm, setSearchTerm] = useState('');
+
     const groupedJobs = groupJobs(jobs);
 
     const filteredGroups = groupedJobs.filter(group => {
+        // 검색어 필터링
+        if (searchTerm) {
+            const query = searchTerm.toLowerCase();
+            const searchTarget = `${group.model} ${group.code} ${group.base}`.toLowerCase();
+            if (!searchTarget.includes(query)) return false;
+        }
+
         if (filter === 'finished' || filter === 'complete') return group.complete;
         if (filter === 'urgent') return group.urgent && !group.complete;
         if (filter === 'new_added') return group.currentStage === 'new_added';
@@ -259,7 +268,49 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         return (
             <div className="animate-fade-in" style={{ paddingBottom: selectedGroups.size > 0 ? '100px' : '0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <h1>공정 관리</h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                        <h1 style={{ margin: 0, whiteSpace: 'nowrap' }}>공정 관리</h1>
+                        {/* 검색창 추가 */}
+                        <div style={{ position: 'relative', maxWidth: '200px', width: '100%' }}>
+                            <input
+                                type="text"
+                                placeholder="품목 검색..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    padding: '8px 12px 8px 32px',
+                                    borderRadius: '8px',
+                                    background: 'rgba(255,255,255,0.05)',
+                                    border: '1px solid var(--glass-border)',
+                                    color: 'white',
+                                    fontSize: '14px'
+                                }}
+                            />
+                            <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                            </div>
+                            {searchTerm && (
+                                <button
+                                    onClick={() => setSearchTerm('')}
+                                    style={{
+                                        position: 'absolute',
+                                        right: '8px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: 'var(--text-muted)',
+                                        cursor: 'pointer',
+                                        padding: 0,
+                                        display: 'flex'
+                                    }}
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={toggleCollapseAll} className="btn-secondary">
                             {collapsedStages.size === stagesToShow.length ? '모두 펼치기' : '모두 접기'}
