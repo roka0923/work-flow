@@ -21,9 +21,33 @@ function AppContent() {
     const [prefillData, setPrefillData] = useState(null);
 
     // 모바일 뒤로가기 종료 방지 및 탭 내비게이션
+    // 모바일 뒤로가기 종료 방지 및 탭 내비게이션
     useEffect(() => {
-        // ... (이전 코드 동일)
-    }, [activeTab]);
+        // 로그인 완료 전 또는 인증 처리 중에는 뒤로가기 방지 로직 실행 금지
+        // (Redirect 후 돌아올 때 URL 파라미터를 유지해야 함)
+        if (!isAuthReady || !currentUser) return;
+
+        const handlePopState = (event) => {
+            // 메인 화면(대시보드)이 아닐 때만 뒤로가기 막고 대시보드로 이동
+            if (activeTab !== 'dashboard') {
+                event.preventDefault();
+                setActiveTab('dashboard');
+                // 히스토리 상태 복구 (앱 종료 방지)
+                window.history.pushState(null, '', window.location.pathname);
+            }
+        };
+
+        // 초기 히스토리 스택 추가 (한 번만)
+        if (activeTab !== 'dashboard') {
+            window.history.pushState(null, '', window.location.pathname);
+        }
+
+        window.addEventListener('popstate', handlePopState);
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [activeTab, isAuthReady, currentUser]);
 
     const {
         jobs,
