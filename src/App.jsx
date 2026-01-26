@@ -25,21 +25,20 @@ function AppContent() {
         // ... (이전 코드 동일)
     }, [activeTab]);
 
-    const jobsHook = isAuthReady ? useJobs() : null;
     const {
-        jobs = [],
-        deletedJobs = [],
-        loading: jobsLoading = true,
-        error: jobsError = null,
-        addJob = () => { },
-        editJob = () => { },
-        deleteJob = () => { },
-        restoreJob = () => { },
-        permanentDeleteJob = () => { },
-        clearDeletedJobs = () => { },
-        resetJobs = () => { },
-        updateJobStatus = () => { }
-    } = jobsHook || {};
+        jobs,
+        deletedJobs,
+        loading: jobsLoading,
+        error: jobsError,
+        addJob,
+        editJob,
+        deleteJob,
+        restoreJob,
+        permanentDeleteJob,
+        clearDeletedJobs,
+        resetJobs,
+        updateJobStatus
+    } = useJobs();
 
     const loading = !isAuthReady || jobsLoading;
     const error = jobsError;
