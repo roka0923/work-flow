@@ -46,8 +46,9 @@ export default function Login() {
                 prompt: 'select_account'
             });
 
-            // 모바일 Redirect 방식 제거 -> PC와 동일하게 Popup 방식 사용
-            // (Redirect 시 발생하는 무한 루프 및 세션 유실 문제 방지)
+            // [CRITICAL] 모바일 리다이렉트(Redirect) 방식 절대 금지
+            // 이유: 리다이렉트 복귀 시 App.jsx의 popstate 로직과 충돌하여 URL 파라미터 유실 -> 무한 루프 발생
+            // 반드시 PC/모바일 모두 'Popup' 방식을 사용해야 함.
             console.log('Google 로그인 시도 (Popup)');
             await signInWithPopup(auth, provider);
             setLoading(false);

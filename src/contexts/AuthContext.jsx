@@ -116,7 +116,8 @@ export function AuthProvider({ children }) {
         const provider = new GoogleAuthProvider();
         // 모바일 기기 감지
         try {
-            // 모바일/PC 모두 Popup 방식 통일 (Redirect 호환성 문제 해결)
+            // [CRITICAL] 모바일/PC 모두 Popup 방식 통일 필수
+            // 리다이렉트 사용 시 PWA/WebView 환경에서 세션 유실 및 무한 재로그인 이슈 발생함
             await signInWithPopup(auth, provider);
         } catch (error) {
             console.error("Google Login Error:", error);
