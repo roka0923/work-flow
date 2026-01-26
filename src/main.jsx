@@ -3,22 +3,16 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './styles/index.css'
 
-// 기존 Service Worker 강제 제거
+// Service Worker 등록 (PWA Support)
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-        registrations.forEach(registration => {
-            registration.unregister()
-                .then(() => {
-                    console.log('✓ 기존 Service Worker 제거 완료');
-                    // 캐시도 모두 삭제
-                    caches.keys().then(names => {
-                        names.forEach(name => {
-                            caches.delete(name);
-                        });
-                    });
-                })
-                .catch(err => console.error('Service Worker 제거 실패:', err));
-        });
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+                console.log('✅ ServiceWorker Registered:', registration.scope);
+            })
+            .catch(err => {
+                console.log('❌ ServiceWorker Registration Failed:', err);
+            });
     });
 }
 
