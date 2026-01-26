@@ -20,19 +20,43 @@ export const requestNotificationPermission = async () => {
 // 알림 표시 함수
 export const showNotification = (title, options = {}) => {
     if (Notification.permission === "granted") {
-        const notification = new Notification(title, {
+        const config = {
             icon: "/daehansa logo workflow.png",
             badge: "/daehansa logo workflow.png",
             vibrate: [200, 100, 200],
             ...options,
-        });
-
-        notification.onclick = () => {
-            window.focus();
-            notification.close();
         };
 
-        return notification;
+        // 모바일(Android) 등에서는 ServiceWorker를 통한 알림만 허용되는 경우가 있음
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(registration => {
+                registration.showNotification(title, config);
+            }).catch(err => {
+                // ServiceWorker 방식 실패 시 (혹은 PC) 기존 방식 시도
+                console.warn('SW Notification failed, trying fallback:', err);
+                try {
+                    const notification = new Notification(title, config);
+                    notification.onclick = () => {
+                        window.focus();
+                        notification.close();
+                    };
+                } catch (e) {
+                    console.error('Notification constructor failed:', e);
+                }
+            });
+        } else {
+            // ServiceWorker가 없는 환경 (구형 브라우저 등)
+            try {
+                const notification = new Notification(title, config);
+                notification.onclick = () => {
+                    window.focus();
+                    notification.close();
+                };
+                return notification;
+            } catch (e) {
+                console.error('Notification constructor failed:', e);
+            }
+        }
     }
 };
 
