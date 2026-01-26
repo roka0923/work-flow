@@ -227,9 +227,21 @@ function AppContent() {
 
     return (
         <Layout activeTab={activeTab} setActiveTab={setActiveTab} tabs={tabs}>
-            <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 1000 }}>
-                <button onClick={logout} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '12px' }}>로그아웃 ({currentUser.email})</button>
-            </div>
+            {activeTab === 'dashboard' && (
+                <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 1000 }}>
+                    <button
+                        onClick={() => {
+                            if (window.confirm('정말 로그아웃 하시겠습니까?')) {
+                                logout();
+                            }
+                        }}
+                        className="btn-secondary"
+                        style={{ padding: '8px 12px', fontSize: '12px' }}
+                    >
+                        로그아웃 ({currentUser.email})
+                    </button>
+                </div>
+            )}
             {renderContent()}
         </Layout>
     );
