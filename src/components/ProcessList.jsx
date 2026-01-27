@@ -9,7 +9,9 @@ import { statusKeys as STACK_STATUS_KEYS, STAGES, getJobStage, groupJobs } from 
 const statusKeys = STACK_STATUS_KEYS;
 
 export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDeleteJob, onEditJob, onAddJob, onPrefillRequest, filter, onClearFilter }) {
-    const { currentUser } = useAuth();
+    const { currentUser, userRole } = useAuth();
+    const isReadOnly = userRole === 'viewer';
+
     const [selectedJob, setSelectedJob] = useState(null);
     const [confirmTarget, setConfirmTarget] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
@@ -43,6 +45,12 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
     const getNextStage = (job) => {
         const currentStage = getJobStage(job);
         if (currentStage === 'new_added') return stages[0];
+
+        // Complete 상태에서도 다음 단계(휴지통) 반환
+        if (currentStage === 'complete') {
+            return { key: 'trash', label: '휴지통', question: '작업을 삭제(휴지통으로 이동)하시겠습니까?' };
+        }
+
         const currentIndex = statusKeys.indexOf(currentStage);
         if (currentIndex < statusKeys.length - 1) return stages[currentIndex + 1];
         return null;
@@ -80,7 +88,11 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
 
     const handleConfirmStatus = () => {
         if (confirmTarget && selectedStaff) {
-            onUpdateStatus(confirmTarget.jobIds, confirmTarget.stageKey, selectedStaff);
+            if (confirmTarget.stageKey === 'trash') {
+                onDeleteJob(confirmTarget.jobIds, selectedStaff);
+            } else {
+                onUpdateStatus(confirmTarget.jobIds, confirmTarget.stageKey, selectedStaff);
+            }
             setConfirmTarget(null);
             setSelectedStaff('');
         }
@@ -105,41 +117,56 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
 
     const handleBatchConfirmStatus = () => {
         if (batchConfirmTarget && selectedStaff) {
-            batchConfirmTarget.groups.forEach(group => {
-                // Fix: Batch update should also check effective group stage, not just first item
-                let currentEffectiveStage = getJobStage(group.items[0]);
-
-                // Logic from handleStageChange to find slowest item
-                if (group.items.length > 0) {
-                    let minIndex = 999;
-                    let minStage = currentEffectiveStage;
-                    group.items.forEach(item => {
-                        const stage = getJobStage(item);
-                        if (stage === 'complete') return;
-                        const idx = statusKeys.indexOf(stage);
-                        if (idx === -1) {
-                            if (minIndex > -1) { minIndex = -1; minStage = 'new_added'; }
-                        } else if (idx < minIndex) {
-                            minIndex = idx;
-                            minStage = stage;
-                        }
-                    });
-                    if (minIndex === 999) {
-                        const allComplete = group.items.every(j => getJobStage(j) === 'complete');
-                        if (allComplete) minStage = 'complete';
+            // 휴지통 이동인 경우
+            if (batchConfirmTarget.stageKey === 'trash') {
+                const allJobIds = [];
+                batchConfirmTarget.groups.forEach(group => {
+                    // 그룹 내 모든 아이템 ID 수집
+                    if (group.items) {
+                        group.items.forEach(item => allJobIds.push(item.id));
+                    } else {
+                        allJobIds.push(group.id);
                     }
-                    currentEffectiveStage = minStage;
-                }
+                });
+                onDeleteJob(allJobIds, selectedStaff);
+            } else {
+                // 일반 공정 이동 logic
+                batchConfirmTarget.groups.forEach(group => {
+                    // Fix: Batch update should also check effective group stage, not just first item
+                    let currentEffectiveStage = getJobStage(group.items[0]);
 
-                const mockJob = { status: { [currentEffectiveStage]: true } };
-                if (currentEffectiveStage === 'complete') mockJob.status.complete = true;
-                if (currentEffectiveStage === 'new_added') mockJob.status = {};
+                    // Logic from handleStageChange to find slowest item
+                    if (group.items.length > 0) {
+                        let minIndex = 999;
+                        let minStage = currentEffectiveStage;
+                        group.items.forEach(item => {
+                            const stage = getJobStage(item);
+                            if (stage === 'complete') return;
+                            const idx = statusKeys.indexOf(stage);
+                            if (idx === -1) {
+                                if (minIndex > -1) { minIndex = -1; minStage = 'new_added'; }
+                            } else if (idx < minIndex) {
+                                minIndex = idx;
+                                minStage = stage;
+                            }
+                        });
+                        if (minIndex === 999) {
+                            const allComplete = group.items.every(j => getJobStage(j) === 'complete');
+                            if (allComplete) minStage = 'complete';
+                        }
+                        currentEffectiveStage = minStage;
+                    }
 
-                const nextStage = getNextStage(mockJob);
-                if (nextStage) {
-                    onUpdateStatus(group.items.map(j => j.id), nextStage.key, selectedStaff);
-                }
-            });
+                    const mockJob = { status: { [currentEffectiveStage]: true } };
+                    if (currentEffectiveStage === 'complete') mockJob.status.complete = true;
+                    if (currentEffectiveStage === 'new_added') mockJob.status = {};
+
+                    const nextStage = getNextStage(mockJob);
+                    if (nextStage) {
+                        onUpdateStatus(group.items.map(j => j.id), nextStage.key, selectedStaff);
+                    }
+                });
+            }
 
             setBatchConfirmTarget(null);
             setSelectedStaff('');
@@ -147,8 +174,31 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         }
     };
 
+    const handleDirectComplete = (job) => {
+        // use fresh data from jobs prop
+        const freshJob = jobs.find(j => j.id === job.id);
+        if (!freshJob) return;
+
+        let jobIds = [freshJob.id];
+        if (freshJob.groupId) {
+            const groupItems = jobs.filter(j => j.groupId === freshJob.groupId);
+            jobIds = groupItems.map(j => j.id);
+        }
+
+        setConfirmTarget({
+            label: '바로 완료',
+            question: '모든 중간 단계를 건너뛰고 바로 생산 완료 처리하시겠습니까?',
+            jobIds: jobIds,
+            stageKey: 'complete'
+        });
+    };
+
     const handleDelete = () => {
-        if (deleteTarget) { onDeleteJob(deleteTarget.ids); setDeleteTarget(null); }
+        if (deleteTarget) {
+            // 일반 삭제 시에는 로그인한 사용자 이름 사용
+            onDeleteJob(deleteTarget.ids, userName || '사용자');
+            setDeleteTarget(null);
+        }
     };
 
 
@@ -332,13 +382,15 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                                         <span>{stage.label}</span>
                                         <span className="badge" style={{ marginLeft: '8px' }}>{jobsByStage[stage.key].length}건</span>
                                     </div>
-                                    <input
-                                        type="checkbox"
-                                        checked={jobsByStage[stage.key].every(g => selectedGroups.has(g.key))}
-                                        onChange={() => handleToggleStage(stage.key)}
-                                        className="stage-checkbox"
-                                        style={{ marginLeft: 'auto' }}
-                                    />
+                                    {!isReadOnly && (
+                                        <input
+                                            type="checkbox"
+                                            checked={jobsByStage[stage.key].every(g => selectedGroups.has(g.key))}
+                                            onChange={() => handleToggleStage(stage.key)}
+                                            className="stage-checkbox"
+                                            style={{ marginLeft: 'auto' }}
+                                        />
+                                    )}
                                 </div>
                                 {!collapsedStages.has(stage.key) && (
                                     <div className="card-list">
@@ -347,6 +399,7 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                                                 key={group.key} group={group} isSelected={selectedGroups.has(group.key)}
                                                 onToggleSelection={(key) => { const n = new Set(selectedGroups); if (n.has(key)) n.delete(key); else n.add(key); setSelectedGroups(n); }}
                                                 onDelete={setDeleteTarget} onDetailClick={setSelectedJob} onStageClick={handleStageChange} stages={stages}
+                                                isReadOnly={isReadOnly}
                                             />
                                         ))}
                                     </div>
@@ -356,26 +409,30 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                     )}
                 </div>
 
-                <BatchActionBar selectedCount={selectedGroups.size} onAction={() => {
-                    const groups = groupedJobs.filter(g => selectedGroups.has(g.key));
-                    const validGroups = groups.filter(g => getNextStage(g.items[0]));
-                    if (validGroups.length > 0) {
-                        const nextStage = getNextStage(validGroups[0].items[0]);
-                        setBatchConfirmTarget({
-                            groups: validGroups,
-                            stageKey: nextStage.key,
-                            label: nextStage.label,
-                            question: nextStage.question,
-                            count: validGroups.length
-                        });
-                    }
-                }} />
+                {!isReadOnly && (
+                    <BatchActionBar selectedCount={selectedGroups.size} onAction={() => {
+                        const groups = groupedJobs.filter(g => selectedGroups.has(g.key));
+                        const validGroups = groups.filter(g => getNextStage(g.items[0]));
+                        if (validGroups.length > 0) {
+                            const nextStage = getNextStage(validGroups[0].items[0]);
+                            setBatchConfirmTarget({
+                                groups: validGroups,
+                                stageKey: nextStage.key,
+                                label: nextStage.label,
+                                question: nextStage.question,
+                                count: validGroups.length
+                            });
+                        }
+                    }} />
+                )}
 
                 <ProcessModals
                     selectedJob={selectedJob} setSelectedJob={setSelectedJob} isEditing={isEditing} setIsEditing={setIsEditing} editData={editData} setEditData={setEditData} saveEdit={saveEdit} startEdit={startEdit}
                     confirmTarget={confirmTarget} setConfirmTarget={setConfirmTarget} selectedStaff={selectedStaff} setSelectedStaff={setSelectedStaff} handleConfirmStatus={handleConfirmStatus} staffNames={staffNames}
                     batchConfirmTarget={batchConfirmTarget} setBatchConfirmTarget={setBatchConfirmTarget} handleBatchConfirmStatus={handleBatchConfirmStatus}
                     deleteTarget={deleteTarget} setDeleteTarget={setDeleteTarget} handleDelete={handleDelete} stages={stages}
+                    onDirectComplete={handleDirectComplete}
+                    isReadOnly={isReadOnly}
                 />
             </div>
         );

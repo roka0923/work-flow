@@ -8,6 +8,8 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedItem, setSelectedItem] = useState(null);
     const [quantity, setQuantity] = useState(1);
+    const [quantityL, setQuantityL] = useState(1);
+    const [quantityR, setQuantityR] = useState(1);
     const [isUrgent, setIsUrgent] = useState(false);
 
     // 로그인한 사용자의 이름을 기본값으로 설정
@@ -33,6 +35,8 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
 
             setSelectedItem(item);
             setQuantity(prefillData.quantity || 1);
+            setQuantityL(prefillData.quantity || 1);
+            setQuantityR(prefillData.quantity || 1);
             setIsUrgent(prefillData.urgent || false);
             setMemo(prefillData.memo || '');
             setSearchTerm(`${item.code} - ${item.model}`);
@@ -65,7 +69,7 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
         const timestamp = Date.now();
         const baseJob = {
             code: selectedItem.code,
-            quantity,
+            quantity: isSetRegistration ? 0 : quantity, // 단일일 때만 quantity 사용
             urgent: isUrgent,
             memo,
             author,
@@ -84,8 +88,14 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
         const groupId = (prefillData && prefillData.groupId) ? prefillData.groupId : `${timestamp}_${selectedItem.code}`;
 
         if (isSetRegistration) {
-            // LH+RH 세트 등록 플래그 포함
-            onAddJob({ ...baseJob, model: selectedItem.model, addBothSides: true });
+            // LH+RH 세트 등록 플래그 포함 + 개별 수량 전달
+            onAddJob({
+                ...baseJob,
+                model: selectedItem.model,
+                addBothSides: true,
+                quantityL,
+                quantityR
+            });
         } else {
             // 단일 작업
             onAddJob({ ...baseJob, model: selectedItem.model });
@@ -182,21 +192,50 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
 
                     <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
                         <div style={{ flex: 1 }}>
-                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'var(--text-muted)' }}>작업 수량</label>
-                            <input
-                                type="number"
-                                value={quantity}
-                                onChange={(e) => setQuantity(parseInt(e.target.value))}
-                                min="1"
-                                style={{
-                                    width: '100%',
-                                    padding: '12px',
-                                    borderRadius: '12px',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    border: '1px solid var(--glass-border)',
-                                    color: 'white'
-                                }}
-                            />
+                            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'var(--text-muted)' }}>
+                                {isSetRegistration ? 'L/R 수량 (각각 입력)' : '작업 수량'}
+                            </label>
+                            {isSetRegistration ? (
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>LH (좌)</div>
+                                        <input
+                                            type="number"
+                                            value={quantityL}
+                                            onChange={(e) => setQuantityL(parseInt(e.target.value) || 1)}
+                                            min="1"
+                                            className="input-field"
+                                            style={{ width: '100%', padding: '10px' }}
+                                        />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>RH (우)</div>
+                                        <input
+                                            type="number"
+                                            value={quantityR}
+                                            onChange={(e) => setQuantityR(parseInt(e.target.value) || 1)}
+                                            min="1"
+                                            className="input-field"
+                                            style={{ width: '100%', padding: '10px' }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <input
+                                    type="number"
+                                    value={quantity}
+                                    onChange={(e) => setQuantity(parseInt(e.target.value))}
+                                    min="1"
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '12px',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        border: '1px solid var(--glass-border)',
+                                        color: 'white'
+                                    }}
+                                />
+                            )}
                         </div>
                         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '8px' }}>
                             <div

@@ -9,7 +9,8 @@ export default function JobCard({
     onDelete,
     onDetailClick,
     onStageClick,
-    stages
+    stages,
+    isReadOnly
 }) {
     const { canDelete } = useAuth();
     const items = group.items || [];
@@ -53,22 +54,24 @@ export default function JobCard({
             }}
         >
             <div style={{ display: 'flex', gap: '12px' }}>
-                {/* Checkbox */}
-                <div
-                    onClick={(e) => { e.stopPropagation(); onToggleSelection(group.key); }}
-                    style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        paddingTop: '4px',
-                        cursor: 'pointer'
-                    }}
-                >
-                    {isSelected ? (
-                        <CheckSquare size={24} color="var(--primary)" />
-                    ) : (
-                        <Square size={24} color="var(--text-muted)" />
-                    )}
-                </div>
+                {/* Checkbox - Hide for ReadOnly */}
+                {!isReadOnly && (
+                    <div
+                        onClick={(e) => { e.stopPropagation(); onToggleSelection(group.key); }}
+                        style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            paddingTop: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        {isSelected ? (
+                            <CheckSquare size={24} color="var(--primary)" />
+                        ) : (
+                            <Square size={24} color="var(--text-muted)" />
+                        )}
+                    </div>
+                )}
 
                 <div style={{ flex: 1 }}>
                     <div onClick={() => onDetailClick(firstItem)} style={{ cursor: 'pointer' }}>
@@ -81,7 +84,11 @@ export default function JobCard({
                                     )}
                                 </div>
                                 <h3 style={{ margin: '6px 0', fontSize: '18px' }}>
-                                    {isPair ? group.base : firstItem.model} {isPair && <span style={{ fontSize: '13px', color: 'var(--primary)', marginLeft: '8px' }}>(L+R 세트)</span>}
+                                    {isPair ? group.base : firstItem.model} {isPair && (
+                                        <span style={{ fontSize: '13px', color: 'var(--primary)', marginLeft: '8px' }}>
+                                            (LH {items.find(i => i.side === 'LH')?.quantity || 1}개, RH {items.find(i => i.side === 'RH')?.quantity || 1}개)
+                                        </span>
+                                    )}
                                 </h3>
                                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -154,6 +161,7 @@ export default function JobCard({
                                     }}
                                     onClick={(e) => {
                                         e.stopPropagation();
+                                        if (isReadOnly) return;
                                         onStageClick(firstItem.id, stage.key);
                                     }}
                                 >
@@ -168,7 +176,7 @@ export default function JobCard({
                                         justifyContent: 'center',
                                         color: isDone ? '#000' : 'var(--text-muted)',
                                         transition: '0.2s',
-                                        cursor: canCheck ? 'pointer' : 'default',
+                                        cursor: !isReadOnly && canCheck ? 'pointer' : 'default',
                                         boxShadow: isDone ? '0 0 10px var(--primary-glow)' : 'none'
                                     }}>
                                         {isDone ? <CheckCircle2 size={20} /> : <Circle size={20} />}

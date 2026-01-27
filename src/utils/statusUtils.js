@@ -10,13 +10,21 @@ export const STAGES = [
 ];
 
 export const getJobStage = (job) => {
-    // 1. 상태 객체가 없는 경우
-    if (!job || !job.status) return 'new_added';
+    if (!job) return 'new_added';
 
-    // 2. 모든 공정이 완료된 경우 (별도 플래그 확인)
+    // 1. 명시적인 stage 값이 'complete' 또는 '생산완료'인 경우 우선 처리
+    if (job.stage === 'complete' || job.stage === '생산완료') return 'complete';
+
+    // 2. 상태 객체가 없거나 유효하지 않은 경우
+    if (!job.status || typeof job.status !== 'object') {
+        // console.log(`[getJobStage] No status for ${job.model || job.id}`, job);
+        return 'new_added';
+    }
+
+    // 3. 모든 공정이 완료된 경우 (별도 플래그 확인)
     if (job.status.complete) return 'complete';
 
-    // 3. 역순으로 확인하여 가장 먼저 'true'인 상태를 반환 (현재 도달한 단계)
+    // 4. 역순으로 확인하여 가장 먼저 'true'인 상태를 반환 (현재 도달한 단계)
     const processKeys = ['waiting', 'disassembly', 'plating_release', 'assembly_wait'];
 
     // 배열 뒤에서부터 확인
@@ -27,7 +35,7 @@ export const getJobStage = (job) => {
         }
     }
 
-    // 4. 아무것도 true가 아니면 신규추가
+    // 5. 아무것도 true가 아니면 신규추가
     return 'new_added';
 };
 

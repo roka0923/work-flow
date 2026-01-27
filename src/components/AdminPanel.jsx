@@ -150,6 +150,7 @@ export default function AdminPanel() {
                                 <option value="admin">관리자 (Admin)</option>
                                 <option value="manager">매니저 (Manager)</option>
                                 <option value="worker">작업자 (Worker)</option>
+                                <option value="viewer">뷰어 (Viewer)</option>
                             </select>
                         </div>
                     </div>
@@ -172,7 +173,7 @@ export default function AdminPanel() {
                         </tr>
                     </thead>
                     <tbody>
-                        {['manager', 'worker'].map(role => (
+                        {['manager', 'worker', 'viewer'].map(role => (
                             <tr key={role} style={{ borderBottom: '1px solid var(--glass-border)' }}>
                                 <td style={{ padding: '12px', fontWeight: 'bold', textTransform: 'capitalize' }}>{role}</td>
                                 <td style={{ padding: '12px', textAlign: 'center' }}>

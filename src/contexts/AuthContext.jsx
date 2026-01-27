@@ -37,12 +37,21 @@ export function AuthProvider({ children }) {
         const permRef = doc(db, "settings", "permissions");
         const unsubscribe = onSnapshot(permRef, (docSnap) => {
             if (docSnap.exists()) {
-                setPermissions(docSnap.data());
+                const data = docSnap.data();
+                // viewer 권한이 없는 경우(기존 데이터 마이그레이션) 자동 추가
+                if (!data.viewer) {
+                    setDoc(permRef, {
+                        ...data,
+                        viewer: { canRequest: false, canDelete: false, canSettings: false }
+                    }, { merge: true });
+                }
+                setPermissions(data);
             } else {
                 // 기본값 생성 (최초 1회)
                 setDoc(permRef, {
                     manager: { canRequest: false, canDelete: false, canSettings: false },
-                    worker: { canRequest: false, canDelete: false, canSettings: false }
+                    worker: { canRequest: false, canDelete: false, canSettings: false },
+                    viewer: { canRequest: false, canDelete: false, canSettings: false }
                 });
             }
         });

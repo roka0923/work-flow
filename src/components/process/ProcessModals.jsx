@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { X, Clock, AlertCircle, Trash2, CheckCircle } from 'lucide-react';
+import { getJobStage } from '../../utils/statusUtils';
 
 export default function ProcessModals({
     selectedJob, setSelectedJob,
@@ -15,7 +16,9 @@ export default function ProcessModals({
     handleBatchConfirmStatus,
     deleteTarget, setDeleteTarget,
     handleDelete,
-    stages
+    stages,
+    onDirectComplete,
+    isReadOnly
 }) {
     return (
         <>
@@ -50,11 +53,21 @@ export default function ProcessModals({
                                             <div className="code">{selectedJob.code}</div>
                                             <h1>{selectedJob.model}</h1>
                                         </div>
-                                        <button onClick={() => startEdit(selectedJob)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }}>편집</button>
+                                        {!isReadOnly && <button onClick={() => startEdit(selectedJob)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }}>편집</button>}
                                     </div>
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                                         <div className="badge">수량: {selectedJob.quantity || 1}개</div>
                                         {selectedJob.urgent && <div className="badge badge-urgent"><AlertCircle size={12} style={{ marginRight: '4px' }} /> 긴급</div>}
+                                        {/* selectedJob is a group object from ProcessList, so we check currentStage */}
+                                        {!isReadOnly && (selectedJob.currentStage === 'new_added' || getJobStage(selectedJob) === 'new_added') && (
+                                            <button
+                                                onClick={() => onDirectComplete(selectedJob)}
+                                                className="badge badge-success cursor-pointer"
+                                                style={{ border: 'none', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}
+                                            >
+                                                <CheckCircle size={12} /> 바로 완료
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="memo-box">

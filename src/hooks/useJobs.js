@@ -129,12 +129,13 @@ export function useJobs() {
             // LH+RH 세트인 경우 (요청 사항 반영)
             if (jobData.addBothSides) {
                 const groupId = `group_${Date.now()}`;
+                const { addBothSides: _, quantityL, quantityR, ...pureData } = jobData;
 
                 // LH 추가
                 const lhRef = push(ref(rtdb, 'processes'));
-                const { addBothSides: _, ...pureData } = jobData;
                 await set(lhRef, {
                     ...pureData,
+                    quantity: quantityL || pureData.quantity || 1,
                     id: lhRef.key,
                     groupId: groupId,
                     side: 'LH',
@@ -146,6 +147,7 @@ export function useJobs() {
                 const rhRef = push(ref(rtdb, 'processes'));
                 await set(rhRef, {
                     ...pureData,
+                    quantity: quantityR || pureData.quantity || 1,
                     id: rhRef.key,
                     groupId: groupId,
                     side: 'RH',
@@ -198,7 +200,7 @@ export function useJobs() {
         }
     };
 
-    const deleteJob = async (targetIds) => {
+    const deleteJob = async (targetIds, staffName = '시스템') => {
         try {
             const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
             for (const id of ids) {
@@ -209,7 +211,8 @@ export function useJobs() {
                     const { id: _, ...dataToSave } = jobToDelete;
                     await set(deletedRef, {
                         ...dataToSave,
-                        deletedAt: new Date().toISOString()
+                        deletedAt: new Date().toISOString(),
+                        deletedBy: staffName
                     });
                     // Remove from processes
                     await remove(ref(rtdb, `processes/${id}`));
@@ -312,6 +315,8 @@ export function useJobs() {
                 updatedAt: Date.now(),
                 history: updatedHistory
             };
+
+            console.log(`[updateJobStatus] Updating ${id} to ${newStage}`, updateData);
 
             try {
                 // 실제 Firebase 업데이트

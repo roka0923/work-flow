@@ -481,7 +481,8 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
                                     <div style={{ flex: 1 }}>
                                         <div style={{ fontSize: '14px', fontWeight: 'bold' }}>{job.model}</div>
                                         <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                            코드: {job.code} • 삭제일: {new Date(job.deletedAt).toLocaleDateString()}
+                                            코드: {job.code} • 삭제: {new Date(job.deletedAt).toLocaleString()}
+                                            {job.deletedBy && ` • 삭제자: ${job.deletedBy}`}
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', gap: '8px' }}>
