@@ -84,10 +84,13 @@ export default function JobCard({
                                     )}
                                 </div>
                                 <h3 style={{ margin: '6px 0', fontSize: '18px' }}>
-                                    {isPair ? group.base : firstItem.model} {isPair && (
+                                    {isPair ? group.base : firstItem.model}
+                                    {isPair ? (
                                         <span style={{ fontSize: '13px', color: 'var(--primary)', marginLeft: '8px' }}>
                                             (LH {items.find(i => i.side === 'LH')?.quantity || 1}개, RH {items.find(i => i.side === 'RH')?.quantity || 1}개)
                                         </span>
+                                    ) : (
+                                        (firstItem.quantity > 1) && <span style={{ fontSize: '13px', color: 'var(--primary)', marginLeft: '8px' }}>({firstItem.quantity}개)</span>
                                     )}
                                 </h3>
                                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '12px' }}>

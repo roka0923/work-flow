@@ -61,7 +61,8 @@ function AppContent() {
         permanentDeleteJob,
         clearDeletedJobs,
         resetJobs,
-        updateJobStatus
+        updateJobStatus,
+        splitAndMoveJob
     } = useJobs();
 
     const loading = !isAuthReady || jobsLoading;
@@ -205,6 +206,7 @@ function AppContent() {
                         onEditJob={editJob}
                         onAddJob={handleAddJob}
                         onPrefillRequest={handlePrefillRequest}
+                        onSplitJob={splitAndMoveJob}
                     />
                 );
             case 'settings':

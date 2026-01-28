@@ -1,6 +1,7 @@
-import React from 'react';
-import { X, Clock, AlertCircle, Trash2, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Clock, AlertCircle, Trash2, CheckCircle, Split } from 'lucide-react';
 import { getJobStage } from '../../utils/statusUtils';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function ProcessModals({
     selectedJob, setSelectedJob,
@@ -18,8 +19,47 @@ export default function ProcessModals({
     handleDelete,
     stages,
     onDirectComplete,
-    isReadOnly
+    onSendToAssemblyWait,
+    isReadOnly,
+    onSplitJob,
+    getNextStage,
+    jobs
 }) {
+    const [splitTarget, setSplitTarget] = useState(null);
+
+    const handleSplitConfirm = (quantities, nextStage, staffName) => {
+        if (splitTarget && onSplitJob) {
+            // Group handling: Pass all IDs involved in the split
+            // If splitTarget has items (prepared in openSplitModal), use them.
+            // quantities is a map { [id]: qty }
+            // We need to pass the list of IDs that have quantities to move.
+            // Or just pass all IDs in the group, and let splitAndMoveJob handle 0 qty (which it does).
+
+            const targetIds = splitTarget.items ? splitTarget.items.map(i => i.id) : [splitTarget.id];
+
+            onSplitJob(targetIds, quantities, nextStage, staffName);
+            setSplitTarget(null);
+            setSelectedJob(null);
+        }
+    };
+
+    const openSplitModal = (job) => {
+        // Determine default next stage
+        const next = getNextStage(job);
+
+        let groupItems = [job];
+        if (job.groupId && jobs) {
+            const found = jobs.filter(j => j.groupId === job.groupId);
+            if (found.length > 0) groupItems = found;
+        }
+
+        setSplitTarget({
+            ...job,
+            items: groupItems,
+            defaultNextStage: next ? next.key : ''
+        });
+    };
+
     return (
         <>
             {/* Job Detail Modal */}
@@ -55,17 +95,35 @@ export default function ProcessModals({
                                         </div>
                                         {!isReadOnly && <button onClick={() => startEdit(selectedJob)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }}>편집</button>}
                                     </div>
-                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                        <div className="badge">수량: {selectedJob.quantity || 1}개</div>
-                                        {selectedJob.urgent && <div className="badge badge-urgent"><AlertCircle size={12} style={{ marginRight: '4px' }} /> 긴급</div>}
-                                        {/* selectedJob is a group object from ProcessList, so we check currentStage */}
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <div className="badge" style={{ fontSize: '15px', padding: '6px 12px' }}>수량: {selectedJob.quantity || 1}개</div>
+                                        {selectedJob.urgent && <div className="badge badge-urgent" style={{ fontSize: '15px', padding: '6px 12px' }}><AlertCircle size={14} style={{ marginRight: '4px' }} /> 긴급</div>}
                                         {!isReadOnly && (selectedJob.currentStage === 'new_added' || getJobStage(selectedJob) === 'new_added') && (
+                                            <>
+                                                <button
+                                                    onClick={() => onSendToAssemblyWait(selectedJob)}
+                                                    className="badge cursor-pointer"
+                                                    style={{ border: 'none', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', background: '#0e7490', color: 'white', fontSize: '15px', fontWeight: '600' }}
+                                                >
+                                                    <Clock size={16} /> 조립대기로
+                                                </button>
+                                                <button
+                                                    onClick={() => onDirectComplete(selectedJob)}
+                                                    className="badge badge-success cursor-pointer"
+                                                    style={{ border: 'none', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', fontSize: '15px', fontWeight: '600' }}
+                                                >
+                                                    <CheckCircle size={16} /> 바로 완료
+                                                </button>
+                                            </>
+                                        )}
+                                        {/* Partial Move Button - Show for all active stages except complete */}
+                                        {!isReadOnly && !selectedJob.status?.complete && (selectedJob.quantity >= 1) && (
                                             <button
-                                                onClick={() => onDirectComplete(selectedJob)}
-                                                className="badge badge-success cursor-pointer"
-                                                style={{ border: 'none', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}
+                                                onClick={() => openSplitModal(selectedJob)}
+                                                className="badge cursor-pointer"
+                                                style={{ border: 'none', display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', background: '#6366f1', color: 'white', fontSize: '15px', fontWeight: '600' }}
                                             >
-                                                <CheckCircle size={12} /> 바로 완료
+                                                <Split size={16} /> 부분 이동
                                             </button>
                                         )}
                                     </div>
@@ -132,6 +190,18 @@ export default function ProcessModals({
                     </div>
                 </div>
             )}
+
+            {/* Split Modal */}
+            {splitTarget && (
+                <SplitModal
+                    job={splitTarget}
+                    onClose={() => setSplitTarget(null)}
+                    onConfirm={handleSplitConfirm}
+                    stages={stages}
+                    staffNames={staffNames}
+                    initialStaff={selectedStaff}
+                />
+            )}
         </>
     );
 }
@@ -197,6 +267,113 @@ function HistoryList({ history, stages }) {
                 ) : (
                     <div className="no-history">작업 이력이 없습니다.</div>
                 )}
+            </div>
+        </div>
+    );
+}
+
+function SplitModal({ job, onClose, onConfirm, stages, staffNames, initialStaff }) {
+    if (!job) return null;
+
+    const isGroup = Array.isArray(job.items) && job.items.length > 1;
+    const items = isGroup ? job.items : [job];
+
+    // Initialize quantities (key: jobId, value: default 1 or 0)
+    const [quantities, setQuantities] = useState(() => {
+        const initial = {};
+        try {
+            if (Array.isArray(items)) {
+                items.forEach(item => {
+                    if (item && item.id) {
+                        initial[item.id] = 1;
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Error initializing quantities:", e);
+        }
+        return initial;
+    });
+
+    const [targetStage, setTargetStage] = useState(job.defaultNextStage);
+    const [staff, setStaff] = useState(initialStaff || '');
+
+    const handleQtyChange = (id, val, max) => {
+        const num = parseInt(val) || 0;
+        const safeNum = Math.min(max, Math.max(0, num));
+        setQuantities(prev => ({ ...prev, [id]: safeNum }));
+    };
+
+    const getTotalMoveCount = () => Object.values(quantities).reduce((a, b) => a + b, 0);
+
+    return (
+        <div className="modal-overlay">
+            <div className="card modal-small" onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                    <h3>부분 이동 (공정 분할)</h3>
+                    <X size={24} onClick={onClose} className="cursor-pointer" />
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                    <p style={{ marginBottom: '8px', color: 'var(--text-muted)' }}>
+                        {isGroup ? '그룹(세트) 내 각 항목별로 이동할 수량을 입력하세요.' : '다음 공정으로 이동할 수량을 입력하세요.'}
+                    </p>
+                </div>
+
+                <div className="form-item">
+                    <label>이동할 수량</label>
+                    {items.map(item => {
+                        const maxQty = item.quantity || 1;
+                        const currentQty = quantities[item.id] !== undefined ? quantities[item.id] : 0;
+                        const sideLabel = item.side ? `(${item.side})` : '';
+
+                        return (
+                            <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', background: 'var(--glass-bg)', padding: '8px', borderRadius: '8px' }}>
+                                <span style={{ fontSize: '14px' }}>
+                                    {item.model || job.model} <span style={{ color: 'var(--primary)' }}>{sideLabel}</span>
+                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '6px' }}>
+                                        (잔여: {maxQty}개)
+                                    </span>
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <input
+                                        type="number"
+                                        className="input-field"
+                                        style={{ width: '80px', textAlign: 'right' }}
+                                        min="0"
+                                        max={maxQty}
+                                        value={currentQty}
+                                        onChange={e => handleQtyChange(item.id, e.target.value, maxQty)}
+                                    />
+                                    <span style={{ fontSize: '13px' }}>개 이동</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div className="staff-selector" style={{ marginTop: '12px' }}>
+                    <label>이동 대상 공정</label>
+                    <select value={targetStage} onChange={e => setTargetStage(e.target.value)} className="input-field">
+                        <option value="">공정 선택</option>
+                        {stages.map(s => (
+                            <option key={s.key} value={s.key}>{s.label}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <StaffSelector selectedStaff={staff} setSelectedStaff={setStaff} staffNames={staffNames} />
+
+                <div className="modal-actions">
+                    <button onClick={onClose} className="btn btn-secondary">취소</button>
+                    <button
+                        onClick={() => onConfirm(quantities, targetStage, staff)}
+                        disabled={!staff || !targetStage || getTotalMoveCount() < 1}
+                        className="btn btn-primary"
+                    >
+                        이동 확인
+                    </button>
+                </div>
             </div>
         </div>
     );

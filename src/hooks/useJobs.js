@@ -371,6 +371,94 @@ export function useJobs() {
         }
     };
 
+    /**
+     * 작업을 분할하여 다음 공정으로 이동
+     * @param {string|string[]} targetIds - 대상 Job ID (단일 또는 배열)
+     * @param {number} splitQuantity - 이동할 수량
+     * @param {string} nextStage - 이동할 다음 단계 Key
+     * @param {string} staffName - 담당자
+     */
+    const splitAndMoveJob = async (targetIds, splitQuantity, nextStage, staffName = '시스템') => {
+        const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
+        const groupId = `group_${Date.now()}_split`; // 분할된 항목끼리 묶기 위한 새 그룹 ID
+        const isQtyMap = typeof splitQuantity === 'object';
+
+        for (const id of ids) {
+            const originalJob = jobs.find(j => j.id === id);
+            if (!originalJob) continue;
+
+            const qtyToMove = isQtyMap ? (splitQuantity[id] || 0) : splitQuantity;
+            if (qtyToMove <= 0) continue;
+
+            try {
+                // 1. 원본 수량 업데이트 (차감)
+                const newOriginalQty = (originalJob.quantity || 1) - qtyToMove;
+                if (newOriginalQty <= 0) {
+                    // 수량이 0 이하라면 분할이 아닌 전체 이동으로 처리
+                    await updateJobStatus([id], nextStage, staffName);
+                    continue;
+                }
+
+                await update(ref(rtdb, `processes/${id}`), {
+                    quantity: newOriginalQty,
+                    updatedAt: serverTimestamp()
+                });
+
+                // 2. 새 작업 생성 (분할된 수량만큼)
+                const { id: _, groupId: oldGroupId, ...jobData } = originalJob;
+
+                // 새 히스토리 레코드
+                const historyItem = {
+                    stage: nextStage,
+                    staffName: staffName,
+                    timestamp: Date.now(),
+                    note: `분할됨 (원본에서 ${qtyToMove}개 이동)`
+                };
+
+                // 기존 히스토리 복사 + 새 히스토리 추가
+                const newHistory = Array.isArray(originalJob.history)
+                    ? [...originalJob.history, historyItem]
+                    : [historyItem];
+
+                // 새 상태 객체 생성 (다음 단계 적용)
+                const statusOrder = ['waiting', 'disassembly', 'plating_release', 'assembly_wait', 'complete'];
+                const newStageIndex = statusOrder.indexOf(nextStage);
+                const newStatus = { ...originalJob.status };
+
+                if (nextStage === 'complete') {
+                    statusOrder.forEach(key => newStatus[key] = true);
+                    newStatus.complete = true;
+                } else if (newStageIndex !== -1) {
+                    for (let i = 0; i <= newStageIndex; i++) {
+                        newStatus[statusOrder[i]] = true;
+                    }
+                } else {
+                    newStatus[nextStage] = true;
+                }
+                newStatus.lastUpdated = new Date().toISOString();
+
+                // 새 ID로 저장
+                const newJobRef = push(ref(rtdb, 'processes'));
+                await set(newJobRef, {
+                    ...jobData,
+                    id: newJobRef.key,
+                    quantity: qtyToMove,
+                    stage: nextStage,
+                    status: newStatus,
+                    groupId: groupId, // 분할된 것들끼리 새 그룹 형성 (LH/RH 세트 유지를 위해)
+                    history: newHistory,
+                    createdAt: originalJob.createdAt, // 생성일은 원본 유지
+                    updatedAt: serverTimestamp(),
+                    parentJobId: id // 원본 추적용
+                });
+
+            } catch (err) {
+                console.error(`Split Failed for ${id}:`, err);
+                setError("작업 분할 중 오류가 발생했습니다.");
+            }
+        }
+    };
+
     return {
         jobs,
         deletedJobs,
@@ -383,6 +471,8 @@ export function useJobs() {
         permanentDeleteJob,
         clearDeletedJobs,
         resetJobs,
-        updateJobStatus
+        resetJobs,
+        updateJobStatus,
+        splitAndMoveJob
     };
 }

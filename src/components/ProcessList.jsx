@@ -8,7 +8,7 @@ import { statusKeys as STACK_STATUS_KEYS, STAGES, getJobStage, groupJobs } from 
 
 const statusKeys = STACK_STATUS_KEYS;
 
-export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDeleteJob, onEditJob, onAddJob, onPrefillRequest, filter, onClearFilter }) {
+export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDeleteJob, onEditJob, onAddJob, onPrefillRequest, onSplitJob, filter, onClearFilter }) {
     const { currentUser, userRole } = useAuth();
     const isReadOnly = userRole === 'viewer';
 
@@ -87,10 +87,12 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
     );
 
     const handleConfirmStatus = () => {
+        console.log('handleConfirmStatus called', { confirmTarget, selectedStaff });
         if (confirmTarget && selectedStaff) {
             if (confirmTarget.stageKey === 'trash') {
                 onDeleteJob(confirmTarget.jobIds, selectedStaff);
             } else {
+                console.log('Calling onUpdateStatus with:', confirmTarget.jobIds, confirmTarget.stageKey, selectedStaff);
                 onUpdateStatus(confirmTarget.jobIds, confirmTarget.stageKey, selectedStaff);
             }
             setConfirmTarget(null);
@@ -190,6 +192,30 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
             question: '모든 중간 단계를 건너뛰고 바로 생산 완료 처리하시겠습니까?',
             jobIds: jobIds,
             stageKey: 'complete'
+        });
+    };
+
+    const handleSendToAssemblyWait = (job) => {
+        console.log('handleSendToAssemblyWait called with:', job);
+        const freshJob = jobs.find(j => j.id === job.id);
+        if (!freshJob) {
+            console.error('Job not found in current jobs list');
+            return;
+        }
+
+        let jobIds = [freshJob.id];
+        if (freshJob.groupId) {
+            const groupItems = jobs.filter(j => j.groupId === freshJob.groupId);
+            jobIds = groupItems.map(j => j.id);
+        }
+
+        console.log('Setting confirmTarget for assembly_wait', { jobIds, stageKey: 'assembly_wait' });
+
+        setConfirmTarget({
+            label: '조립대기로',
+            question: '중간 단계를 건너뛰고 바로 조립대기 단계로 이동하시겠습니까?',
+            jobIds: jobIds,
+            stageKey: 'assembly_wait'
         });
     };
 
@@ -432,7 +458,11 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                     batchConfirmTarget={batchConfirmTarget} setBatchConfirmTarget={setBatchConfirmTarget} handleBatchConfirmStatus={handleBatchConfirmStatus}
                     deleteTarget={deleteTarget} setDeleteTarget={setDeleteTarget} handleDelete={handleDelete} stages={stages}
                     onDirectComplete={handleDirectComplete}
+                    onSendToAssemblyWait={handleSendToAssemblyWait}
+                    onSplitJob={onSplitJob}
+                    getNextStage={getNextStage}
                     isReadOnly={isReadOnly}
+                    jobs={jobs}
                 />
             </div>
         );
