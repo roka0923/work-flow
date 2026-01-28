@@ -229,13 +229,54 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
 
 
     const startEdit = (job) => {
-        setEditData({ model: job.model, code: job.code, memo: job.memo || '', quantity: job.quantity || 1, urgent: job.urgent || false });
+        const isGroup = job.items && job.items.length > 1;
+        const quantities = {};
+        if (isGroup) {
+            job.items.forEach(item => {
+                quantities[item.id] = item.quantity || 1;
+            });
+        }
+
+        setEditData({
+            model: job.model,
+            code: job.code,
+            memo: job.memo || '',
+            quantity: job.quantity || 1,
+            urgent: job.urgent || false,
+            quantities: isGroup ? quantities : null // Store individual quantities for groups
+        });
         setIsEditing(true);
     };
 
     const saveEdit = () => {
-        onEditJob(selectedJob.id, editData);
-        setSelectedJob({ ...selectedJob, ...editData });
+        if (editData.quantities && selectedJob.items) {
+            // Group Update: Update each item individually
+            selectedJob.items.forEach(item => {
+                const qty = editData.quantities[item.id];
+                const itemData = {
+                    model: editData.model,
+                    code: editData.code,
+                    memo: editData.memo,
+                    urgent: editData.urgent,
+                    quantity: qty !== undefined ? parseInt(qty) : item.quantity
+                };
+                onEditJob(item.id, itemData);
+            });
+            // For UI update, we might just want to close editing. 
+            // Optimistic update for group is complex here without deep cloning, 
+            // so we rely on db listener or just update selectedJob roughly for immediate feedback if needed.
+            setSelectedJob({
+                ...selectedJob, ...editData, items: selectedJob.items.map(i => ({
+                    ...i,
+                    ...editData,
+                    quantity: editData.quantities[i.id] || i.quantity
+                }))
+            });
+        } else {
+            // Single Update
+            onEditJob(selectedJob.id, editData);
+            setSelectedJob({ ...selectedJob, ...editData });
+        }
         setIsEditing(false);
     };
 

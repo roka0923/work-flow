@@ -74,7 +74,7 @@ export default function JobCard({
                 )}
 
                 <div style={{ flex: 1 }}>
-                    <div onClick={() => onDetailClick(firstItem)} style={{ cursor: 'pointer' }}>
+                    <div onClick={() => onDetailClick({ ...firstItem, items })} style={{ cursor: 'pointer' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
                             <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

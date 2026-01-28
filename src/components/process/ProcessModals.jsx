@@ -76,7 +76,39 @@ export default function ProcessModals({
                                 <FormItem label="모델명" value={editData.model} onChange={v => setEditData({ ...editData, model: v })} />
                                 <FormItem label="지시번호" value={editData.code} onChange={v => setEditData({ ...editData, code: v })} />
                                 <div className="flex-row">
-                                    <FormItem label="수량" type="number" value={editData.quantity} onChange={v => setEditData({ ...editData, quantity: parseInt(v) || 1 })} />
+                                    {editData.quantities && selectedJob.items ? (
+                                        <div className="form-item">
+                                            <label style={{ marginBottom: '8px', display: 'block' }}>수량 (개별 변경)</label>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--glass-bg)', padding: '10px', borderRadius: '8px' }}>
+                                                {selectedJob.items.map(item => (
+                                                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                        <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{item.side}</span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <input
+                                                                type="number"
+                                                                className="input-field"
+                                                                style={{ width: '80px', textAlign: 'right' }}
+                                                                value={editData.quantities[item.id]}
+                                                                onChange={e => {
+                                                                    const val = parseInt(e.target.value) || 0;
+                                                                    setEditData({
+                                                                        ...editData,
+                                                                        quantities: {
+                                                                            ...editData.quantities,
+                                                                            [item.id]: val
+                                                                        }
+                                                                    });
+                                                                }}
+                                                            />
+                                                            <span style={{ fontSize: '13px' }}>개</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <FormItem label="수량" type="number" value={editData.quantity} onChange={v => setEditData({ ...editData, quantity: parseInt(v) || 1 })} />
+                                    )}
                                     <UrgentToggle urgent={editData.urgent} onClick={() => setEditData({ ...editData, urgent: !editData.urgent })} />
                                 </div>
                                 <FormItem label="메모/코멘트" type="textarea" value={editData.memo} onChange={v => setEditData({ ...editData, memo: v })} />
