@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      // 개발 편의를 위해 일시적으로 모든 사용자 허용
+      // 추후 보안을 위해 'if request.auth != null'로 변경 권장
+      allow read, write: if true;
+    }
+  }
+}

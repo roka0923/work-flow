@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2, Link as LinkIcon, RefreshCw, Activity } from 'lucide-react';
+import { Trash2, Info, Database, Github, ExternalLink, X, AlertTriangle, RotateCcw, Archive, ChevronDown, ChevronUp, Package, Upload, CheckCircle2, Link as LinkIcon, RefreshCw, Activity, Image as ImageIcon } from 'lucide-react';
 import { ref, update, get, remove, serverTimestamp } from 'firebase/database';
-import { collection, query, where, getCountFromServer } from 'firebase/firestore';
-import { rtdb, db } from '../firebase/config';
+import { collection, query, where, getCountFromServer, writeBatch, doc, getDoc, updateDoc, getDocs } from 'firebase/firestore';
+import { rtdb, db, storage } from '../firebase/config';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import versionInfo from '../config/version.json';
 import { debugFirebaseStructure } from '../utils/debugFirebase';
 import { requestNotificationPermission } from '../utils/notifications';
@@ -33,6 +34,88 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
     const [isTrashExpanded, setIsTrashExpanded] = useState(false);
     const [isProductExpanded, setIsProductExpanded] = useState(false);
 
+    // Image Upload Management
+    const [imageSearchTerm, setImageSearchTerm] = useState('');
+    const [searchedProduct, setSearchedProduct] = useState(null);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+    const handleProductSearch = async () => {
+        if (!imageSearchTerm.trim()) {
+            alert('검색어를 입력해주세요.');
+            return;
+        }
+        setSearchLoading(true);
+        setSearchedProduct(null);
+        try {
+            // 1. Try to find by Exact Code (Doc ID)
+            const docRef = doc(db, 'products', imageSearchTerm.trim());
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                setSearchedProduct({ code: docSnap.id, ...docSnap.data() });
+            } else {
+                // 2. If not found, try to search by 'model' field
+                const q = query(
+                    collection(db, 'products'),
+                    where('model', '>=', imageSearchTerm),
+                    where('model', '<=', imageSearchTerm + '\uf8ff')
+                );
+                const querySnapshot = await getDocs(q);
+
+                if (!querySnapshot.empty) {
+                    const firstDoc = querySnapshot.docs[0];
+                    setSearchedProduct({ code: firstDoc.id, ...firstDoc.data() });
+                } else {
+                    alert('품목을 찾을 수 없습니다.');
+                }
+            }
+        } catch (error) {
+            console.error("Product search failed:", error);
+            alert("검색 중 오류가 발생했습니다.");
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    const handleImageUpload = async (e, productCode) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!productCode) {
+            alert('품목 코드가 유효하지 않습니다.');
+            return;
+        }
+
+        setIsUploadingImage(true);
+        try {
+            // Ref: products/{code}/{filename}
+            const fileRef = storageRef(storage, `products/${productCode}/${file.name}`);
+
+            // Upload
+            await uploadBytes(fileRef, file);
+
+            // Get URL
+            const url = await getDownloadURL(fileRef);
+
+            // Update Firestore
+            const productRef = doc(db, 'products', productCode);
+            await updateDoc(productRef, {
+                '이미지': url,
+                lastUpdated: new Date().toISOString()
+            });
+
+            // Update local state
+            setSearchedProduct(prev => ({ ...prev, '이미지': url }));
+            alert('✅ 이미지가 성공적으로 업로드되었습니다!');
+        } catch (error) {
+            console.error("Image upload failed:", error);
+            alert(`업로드 실패: ${error.message}`);
+        } finally {
+            setIsUploadingImage(false);
+        }
+    };
+
     // Google Sheets Sync States
     const [sheetsUrl, setSheetsUrl] = useState(localStorage.getItem('sheetsUrl') || '');
     const [syncing, setSyncing] = useState(false);
@@ -50,7 +133,6 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
         setConfirmConfig({ ...confirmConfig, isOpen: false });
     };
 
-
     // Firestore Products Count (Domestic Only)
     useEffect(() => {
         const fetchProductsCount = async () => {
@@ -64,6 +146,7 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
         };
         fetchProductsCount();
     }, [syncMessage]);
+
 
     const handleSyncFromSheets = async () => {
         if (!sheetsUrl) {
@@ -82,7 +165,39 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
 
             // 2. CSV Download
             setSyncProgress('데이터 다운로드 중...');
-            const response = await fetch(sheetsUrl);
+
+            let fetchUrl = sheetsUrl;
+            // Google Sheets URL Auto-conversion
+            if (sheetsUrl.includes('docs.google.com/spreadsheets')) {
+                try {
+                    // Extract Spreadsheet ID
+                    const idMatch = sheetsUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                    const spreadsheetId = idMatch ? idMatch[1] : null;
+
+                    // Extract GID (Sheet ID)
+                    // URLSearchParams usually works on the query string part, but let's be robust
+                    const urlObj = new URL(sheetsUrl);
+                    let gid = urlObj.searchParams.get('gid');
+
+                    // Sometimes gid is in the hash part (#gid=123)
+                    if (!gid && urlObj.hash) {
+                        const hashMatch = urlObj.hash.match(/gid=([0-9]+)/);
+                        if (hashMatch) gid = hashMatch[1];
+                    }
+
+                    // Default to first sheet if no gid found
+                    if (!gid) gid = '0';
+
+                    if (spreadsheetId) {
+                        fetchUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`;
+                        console.log('Converted Sheet URL:', fetchUrl);
+                    }
+                } catch (e) {
+                    console.warn('URL conversion failed, trying original URL', e);
+                }
+            }
+
+            const response = await fetch(fetchUrl);
 
             if (!response.ok) {
                 throw new Error('Google Sheets 데이터를 가져올 수 없습니다. URL을 확인하고 "웹에 게시"가 활성화되어 있는지 확인하세요.');
@@ -135,32 +250,35 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
                 throw new Error('유효한 데이터가 없습니다');
             }
 
-            // 5. Firebase Upload (Batch)
-            const batchSize = 500;
-            const productsRef = ref(rtdb, 'products');
+            // 5. Firestore Upload (Batch)
+            // Firestore는 배치당 최대 500개 쓰기 제한이 있습니다.
+            const batchSize = 450;
+            let successCount = 0;
 
-            // Delete existing products
-            setSyncProgress('기존 데이터 삭제 중...');
-            await remove(productsRef);
-
-            // Upload new products
             for (let i = 0; i < products.length; i += batchSize) {
-                const batch = products.slice(i, i + batchSize);
-                const updates = {};
+                const batchChunk = products.slice(i, i + batchSize);
+                const batch = writeBatch(db); // Firestore Batch 생성
 
-                batch.forEach(product => {
-                    // Use product code as key for faster lookup
-                    updates[`/products/${product.code}`] = product;
+                batchChunk.forEach(product => {
+                    const productRef = doc(db, 'products', product.code);
+                    const productData = {
+                        ...product,
+                        origin: '국산',
+                        lastSynced: new Date().toISOString()
+                    };
+                    // merge: true 옵션을 사용하여 기존 데이터(상세 스펙 등)를 유지하면서 업데이트
+                    batch.set(productRef, productData, { merge: true });
                 });
 
-                await update(ref(rtdb), updates);
-                setSyncProgress(`업로드 중: ${Math.min(i + batchSize, products.length)}/${products.length}`);
+                await batch.commit();
+                successCount += batchChunk.length;
+                setSyncProgress(`업로드 중: ${Math.min(successCount, products.length)}/${products.length}`);
 
-                // Prevent rate limiting
-                await new Promise(resolve => setTimeout(resolve, 100));
+                // Rate limiting 방지
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
 
-            setSyncMessage(`✅ 동기화 완료! ${products.length}개 품목이 업데이트되었습니다.`);
+            setSyncMessage(`✅ 동기화 완료! ${successCount}개 품목이 업데이트되었습니다.`);
             setSyncError(false);
 
         } catch (error) {
@@ -191,27 +309,27 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
                 // 1. 타임스탬프 형태의 유령 노드 (13자리 숫자)
                 if (/^\d{13}$/.test(key)) {
                     console.log('타임스탬프 유령 노드 발견:', key, value);
-                    updates[`processes/${key}`] = null;
+                    updates[key] = null;
                     ghostCount++;
                 }
 
                 // 2. "undefined" 노드
                 else if (key === 'undefined') {
                     console.log('undefined 노드 발견:', value);
-                    updates[`processes/undefined`] = null;
+                    updates['undefined'] = null;
                     ghostCount++;
                 }
 
                 // 3. 필수 필드 없는 불완전한 노드 (프로젝트 표준인 code, model 기준)
                 else if (!value.code || !value.model) {
                     console.log('불완전한 노드 발견:', key, value);
-                    updates[`processes/${key}`] = null;
+                    updates[key] = null;
                     ghostCount++;
                 }
             });
 
             if (ghostCount > 0) {
-                await update(ref(rtdb), updates);
+                await update(ref(rtdb, 'processes'), updates);
                 alert(`✅ ${ghostCount}개의 유령 노드를 정리했습니다`);
             } else {
                 alert('✅ 정리할 유령 노드가 없습니다');
@@ -325,6 +443,89 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
                 {isProductExpanded && (
                     <div className="animate-fade-in" style={{ padding: '0 20px 20px 20px', borderTop: '1px solid var(--glass-border)' }}>
                         <div style={{ marginTop: '16px' }}>
+                            {/* --- Image Management Section --- */}
+                            <div className="info-box" style={{
+                                background: 'rgba(168, 85, 247, 0.05)',
+                                borderLeft: '4px solid var(--secondary)',
+                                padding: '16px',
+                                marginBottom: '20px',
+                                borderRadius: '8px'
+                            }}>
+                                <h4 style={{ marginTop: 0, color: 'var(--secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <ImageIcon size={18} /> 이미지 업로드 관리
+                                </h4>
+                                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                                    품목의 이미지를 직접 업로드할 수 있습니다. 이미지는 Firebase Storage에 안전하게 저장되며 모든 앱에서 공유됩니다.
+                                </p>
+
+                                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                                    <input
+                                        type="text"
+                                        placeholder="품목코드 또는 품목명 검색..."
+                                        value={imageSearchTerm}
+                                        onChange={(e) => setImageSearchTerm(e.target.value)}
+                                        onKeyPress={(e) => e.key === 'Enter' && handleProductSearch()}
+                                        style={{
+                                            flex: 1,
+                                            padding: '10px',
+                                            borderRadius: '8px',
+                                            background: 'rgba(255,255,255,0.05)',
+                                            border: '1px solid var(--glass-border)',
+                                            color: 'white'
+                                        }}
+                                    />
+                                    <button
+                                        onClick={handleProductSearch}
+                                        className="btn btn-secondary"
+                                        disabled={searchLoading}
+                                    >
+                                        {searchLoading ? '검색 중...' : '검색'}
+                                    </button>
+                                </div>
+
+                                {searchedProduct && (
+                                    <div style={{ background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
+                                        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+                                            <div style={{ width: '80px', height: '80px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                {searchedProduct.이미지 ? (
+                                                    <img src={searchedProduct.이미지} alt="Product" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                ) : (
+                                                    <ImageIcon size={24} color="var(--text-muted)" />
+                                                )}
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 'bold', fontSize: '15px' }}>{searchedProduct.model}</div>
+                                                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>{searchedProduct.code}</div>
+
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <label
+                                                        className={`btn ${isUploadingImage ? 'btn-secondary' : 'btn-primary'}`}
+                                                        style={{ fontSize: '13px', padding: '6px 12px', cursor: isUploadingImage ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                                    >
+                                                        {isUploadingImage ? (
+                                                            <>업로드 중...</>
+                                                        ) : (
+                                                            <>
+                                                                <Upload size={14} /> 이미지 선택 & 업로드
+                                                            </>
+                                                        )}
+                                                        <input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            onChange={(e) => handleImageUpload(e, searchedProduct.code)}
+                                                            style={{ display: 'none' }}
+                                                            disabled={isUploadingImage}
+                                                        />
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <hr style={{ border: 'none', borderTop: '1px solid var(--glass-border)', margin: '24px 0' }} />
+
                             <div className="info-box" style={{
                                 background: 'rgba(34, 211, 238, 0.05)',
                                 borderLeft: '4px solid var(--primary)',
@@ -371,16 +572,16 @@ export default function Settings({ onResetData, jobsCount, deletedJobs = [], onR
                             </div>
 
                             <button
-                                onClick={() => alert('Firestore 통합 후 시트 동기화는 현재 비활성화되었습니다. 데이터 수정이 필요하시면 관리자에게 문의하세요.')}
-                                className="btn btn-secondary btn-full"
+                                onClick={handleSyncFromSheets}
+                                disabled={syncing}
+                                className={syncing ? "btn btn-secondary btn-full" : "btn btn-primary btn-full"}
                                 style={{
                                     height: '48px',
-                                    fontSize: '15px',
-                                    opacity: 0.6
+                                    fontSize: '15px'
                                 }}
                             >
-                                <RefreshCw size={18} style={{ marginRight: '8px' }} />
-                                Google Sheets 동기화 (비활성)
+                                <RefreshCw size={18} style={{ marginRight: '8px' }} className={syncing ? "animate-spin" : ""} />
+                                {syncing ? syncProgress || '동기화 중...' : 'Google Sheets 동기화'}
                             </button>
 
                             {syncMessage && (

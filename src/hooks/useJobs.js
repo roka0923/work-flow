@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ref, onValue, set, push, update, remove, serverTimestamp, get } from 'firebase/database';
-import { rtdb, auth } from '../firebase/config';
+import { rtdb, auth, db } from '../firebase/config';
+import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { notifyProcessChange } from '../utils/notifications';
 import { STAGES } from '../utils/statusUtils';
@@ -126,6 +127,14 @@ export function useJobs() {
 
     const addJob = async (jobData) => {
         try {
+            // Initial History Entry
+            const initialHistory = [{
+                stage: 'new_added',
+                staffName: jobData.author || '시스템',
+                timestamp: Date.now(),
+                note: jobData.memo || '작업 요청 등록'
+            }];
+
             // LH+RH 세트인 경우 (요청 사항 반영)
             if (jobData.addBothSides) {
                 const groupId = `group_${Date.now()}`;
@@ -139,6 +148,7 @@ export function useJobs() {
                     id: lhRef.key,
                     groupId: groupId,
                     side: 'LH',
+                    history: initialHistory,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp()
                 });
@@ -151,6 +161,7 @@ export function useJobs() {
                     id: rhRef.key,
                     groupId: groupId,
                     side: 'RH',
+                    history: initialHistory,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp()
                 });
@@ -165,6 +176,7 @@ export function useJobs() {
                         id: newJobRef.key,
                         stage: job.stage || "신규추가",
                         status: job.status || "진행중",
+                        history: initialHistory,
                         createdAt: serverTimestamp(),
                         updatedAt: serverTimestamp()
                     });
@@ -176,6 +188,7 @@ export function useJobs() {
                 await set(newJobRef, {
                     ...jobToSave,
                     id: newJobRef.key,
+                    history: initialHistory,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp()
                 });
@@ -203,23 +216,74 @@ export function useJobs() {
     const deleteJob = async (targetIds, staffName = '시스템') => {
         try {
             const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
+            const deletedItems = [];
+
             for (const id of ids) {
                 const jobToDelete = jobs.find(j => j.id === id);
                 if (jobToDelete) {
                     // Move to deleted_processes
                     const deletedRef = ref(rtdb, `deleted_processes/${id}`);
                     const { id: _, ...dataToSave } = jobToDelete;
+                    const deletedAt = new Date().toISOString();
+
                     await set(deletedRef, {
                         ...dataToSave,
-                        deletedAt: new Date().toISOString(),
+                        deletedAt: deletedAt,
                         deletedBy: staffName
                     });
+
                     // Remove from processes
                     await remove(ref(rtdb, `processes/${id}`));
+
+                    deletedItems.push({ ...jobToDelete, deletedAt, deletedBy: staffName });
                 }
             }
+
+            // Email Notification Logic (Firebase Extension Pattern)
+            if (deletedItems.length > 0) {
+                try {
+                    // 1. Fetch Admin Emails
+                    const q = query(collection(db, "users"), where("role", "==", "admin"));
+                    const querySnapshot = await getDocs(q);
+                    const adminEmails = querySnapshot.docs.map(doc => doc.data().email).filter(email => email);
+
+                    if (adminEmails.length > 0) {
+                        // 2. Create Email Content
+                        const emailBody = deletedItems.map(item => `
+                            <li>
+                                <strong>모델:</strong> ${item.model} (${item.code})<br/>
+                                <strong>수량:</strong> ${item.quantity}<br/>
+                                <strong>삭제자:</strong> ${staffName}<br/>
+                                <strong>삭제일시:</strong> ${new Date().toLocaleString()}
+                            </li>
+                        `).join('');
+
+                        // 3. Write to 'mail' collection (Trigger Email Extension)
+                        await addDoc(collection(db, "mail"), {
+                            to: adminEmails,
+                            message: {
+                                subject: `[작업삭제알림] ${deletedItems.length}건의 작업이 삭제되었습니다.`,
+                                html: `
+                                    <h2>작업 삭제 알림</h2>
+                                    <p>다음 작업이 삭제되었습니다:</p>
+                                    <ul>${emailBody}</ul>
+                                    <p>시스템에 의해 자동 발송된 메일입니다.</p>
+                                `
+                            }
+                        });
+                        // console.log(`📧 Email trigger created for admins: ${adminEmails.join(', ')}`);
+                    } else {
+                        // console.warn("⚠️ No admin emails found. Email notification skipped.");
+                    }
+                } catch (emailErr) {
+                    console.error("Failed to send email notification:", emailErr);
+                    // Do not block delete operation on email failure
+                }
+            }
+
         } catch (err) {
             setError("데이터 삭제 중 오류가 발생했습니다.");
+            console.error(err);
         }
     };
 
@@ -264,7 +328,7 @@ export function useJobs() {
         }
     };
 
-    const updateJobStatus = async (targetIds, newStage, staffName = '시스템') => {
+    const updateJobStatus = async (targetIds, newStage, staffName = '시스템', updatesMap = {}) => {
         const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
 
         for (const id of ids) {
@@ -308,8 +372,12 @@ export function useJobs() {
 
             updatedStatus.lastUpdated = new Date().toISOString();
 
+            // 개별 업데이트 데이터 병합 (수량 변경 등)
+            const specificUpdate = updatesMap[id] || {};
+
             const updateData = {
                 ...metaData,
+                ...specificUpdate, // 여기서 덮어쓰기 (예: quantity)
                 stage: newStage,
                 status: updatedStatus,
                 updatedAt: Date.now(),
@@ -322,16 +390,22 @@ export function useJobs() {
                 // 실제 Firebase 업데이트
                 await update(ref(rtdb, `processes/${id}`), updateData);
 
-                // [변경된 로직]
-                // 기존의 notifyProcessChange 직접 호출을 제거했습니다.
-                // 이제 onValue 리스너가 DB 변경을 감지하여 자동으로 알림을 보냅니다.
-                // 이를 통해 다른 클라이언트(다른 사용자)에게도 브로드캐스트가 가능해집니다.
-
                 // 그룹 업데이트 (한 번만 호출될 때 자동 연동)
-                if (groupId && !Array.isArray(targetIds)) {
+                // 주의: updatesMap에 있는 수량 변경은 해당 ID에만 적용되어야 하므로 그룹 전파 시에는 제외하거나, 
+                // 해당 그룹 멤버의 ID로 updatesMap에 정의되어 있어야 함.
+                // 여기서는 그룹 멤버 자동 업데이트 로직이 "같은 그룹의 다른 멤버도 동일 단계로 이동"시키는 편의 기능임.
+                // 만약 수량 변경이 필요한 경우라면, caller(ProcessList)에서 targetIds에 그룹원을 모두 포함시켜서 호출하는 것이 안전함.
+                // 따라서 targetIds에 포함되지 않은 그룹 멤버는 "상태만" 동기화됨.
+
+                if (groupId && !Array.isArray(targetIds)) { // targetIds가 단일일 때만 자동 그룹 연동 (기존 로직 유지)
+                    // 하지만 이번 기능(수량 변경)은 명시적으로 targetIds를 다 넘길 예정이므로 이 블록은 "수량 변경 없는 단순 이동"에만 주로 작동할 것임.
                     const groupJobs = jobs.filter(j => j.groupId === groupId && j.id !== id);
                     for (const gJob of groupJobs) {
                         const { id: gId, ...gMeta } = gJob;
+
+                        // 이미 메인 루프에서 처리될 예정인 ID라면 건너뛰기
+                        if (ids.includes(gId)) continue;
+
                         const gHistory = Array.isArray(gJob.history)
                             ? [...gJob.history, historyItem]
                             : [historyItem];

@@ -206,6 +206,7 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
                                             min="1"
                                             className="input-field"
                                             style={{ width: '100%', padding: '10px' }}
+                                            onFocus={(e) => e.target.select()}
                                         />
                                     </div>
                                     <div style={{ flex: 1 }}>
@@ -217,6 +218,7 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
                                             min="1"
                                             className="input-field"
                                             style={{ width: '100%', padding: '10px' }}
+                                            onFocus={(e) => e.target.select()}
                                         />
                                     </div>
                                 </div>
@@ -234,6 +236,7 @@ export default function JobRequest({ onAddJob, prefillData, onClearPrefill, staf
                                         border: '1px solid var(--glass-border)',
                                         color: 'white'
                                     }}
+                                    onFocus={(e) => e.target.select()}
                                 />
                             )}
                         </div>

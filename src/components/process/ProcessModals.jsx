@@ -2,6 +2,11 @@ import React, { useState } from 'react';
 import { X, Clock, AlertCircle, Trash2, CheckCircle, Split } from 'lucide-react';
 import { getJobStage } from '../../utils/statusUtils';
 import { useAuth } from '../../contexts/AuthContext';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase/config';
+
+// Global cache for product data to avoid redundant fetches
+const productDataCache = {};
 
 export default function ProcessModals({
     selectedJob, setSelectedJob,
@@ -26,6 +31,55 @@ export default function ProcessModals({
     jobs
 }) {
     const [splitTarget, setSplitTarget] = useState(null);
+    const [confirmQuantities, setConfirmQuantities] = useState({});
+
+    // 모달 타겟이 변경될 때 수량 입력 초기화
+    React.useEffect(() => {
+        setConfirmQuantities({});
+    }, [confirmTarget, batchConfirmTarget]);
+
+    // Preload product info when selectedJob changes
+    React.useEffect(() => {
+        if (selectedJob && selectedJob.code) {
+            const code = selectedJob.code;
+
+            // If not in cache, fetch it in background
+            if (!productDataCache[code]) {
+                // We define a separate async function to not block effect
+                const preload = async () => {
+                    try {
+                        const docRef = doc(db, 'products', code);
+                        const docSnap = await getDoc(docRef);
+                        if (docSnap.exists()) {
+                            const data = docSnap.data();
+                            if (data.이미지 && data.이미지.includes('dropbox.com')) {
+                                data.이미지 = data.이미지.replace('dl=0', 'raw=1');
+                            }
+                            // Save to cache
+                            productDataCache[code] = data;
+
+                            // Measure: Preload image
+                            if (data.이미지) {
+                                const img = new Image();
+                                img.src = data.이미지;
+                            }
+                        }
+                    } catch (err) {
+                        console.warn("Background preload failed:", err);
+                    }
+                };
+                preload();
+            } else {
+                // If already in data cache BUT image might not be in browser cache, 
+                // we can trigger image load again just in case (optional, but safe)
+                const data = productDataCache[code];
+                if (data.이미지) {
+                    const img = new Image();
+                    img.src = data.이미지;
+                }
+            }
+        }
+    }, [selectedJob]);
 
     const handleSplitConfirm = (quantities, nextStage, staffName) => {
         if (splitTarget && onSplitJob) {
@@ -60,15 +114,53 @@ export default function ProcessModals({
         });
     };
 
+    const [productInfo, setProductInfo] = useState(null);
+    const [loadingProduct, setLoadingProduct] = useState(false);
+
+    const handleShowProductInfo = async (code) => {
+        if (!code) return;
+
+        // Check cache first
+        if (productDataCache[code]) {
+            setProductInfo(productDataCache[code]);
+            return;
+        }
+
+        setLoadingProduct(true);
+        try {
+            const docRef = doc(db, 'products', code);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                // Dropbox 이미지 링크 변환 (dl=0 -> raw=1)
+                if (data.이미지 && data.이미지.includes('dropbox.com')) {
+                    data.이미지 = data.이미지.replace('dl=0', 'raw=1');
+                }
+                productDataCache[code] = data; // Save to cache
+                setProductInfo(data);
+            } else {
+                alert('해당 품목의 상세 정보가 없습니다.');
+            }
+        } catch (error) {
+            console.error("Error fetching product info:", error);
+            alert('품목 정보를 불러오는 중 오류가 발생했습니다.');
+        } finally {
+            setLoadingProduct(false);
+        }
+    };
+
     return (
         <>
             {/* Job Detail Modal */}
             {selectedJob && (
-                <div className="modal-overlay" onClick={() => setSelectedJob(null)}>
+                <div className="modal-overlay" onClick={() => { setSelectedJob(null); setIsEditing(false); }}>
                     <div className="card modal-content" onClick={e => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h2>작업 상세 정보</h2>
-                            <X size={28} onClick={() => setSelectedJob(null)} className="cursor-pointer" />
+                            <div>
+                                <h2>작업 상세 정보</h2>
+                            </div>
+                            <X size={28} onClick={() => { setSelectedJob(null); setIsEditing(false); }} className="cursor-pointer" />
                         </div>
 
                         {isEditing ? (
@@ -80,30 +172,37 @@ export default function ProcessModals({
                                         <div className="form-item">
                                             <label style={{ marginBottom: '8px', display: 'block' }}>수량 (개별 변경)</label>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--glass-bg)', padding: '10px', borderRadius: '8px' }}>
-                                                {selectedJob.items.map(item => (
-                                                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                        <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{item.side}</span>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                            <input
-                                                                type="number"
-                                                                className="input-field"
-                                                                style={{ width: '80px', textAlign: 'right' }}
-                                                                value={editData.quantities[item.id]}
-                                                                onChange={e => {
-                                                                    const val = parseInt(e.target.value) || 0;
-                                                                    setEditData({
-                                                                        ...editData,
-                                                                        quantities: {
-                                                                            ...editData.quantities,
-                                                                            [item.id]: val
-                                                                        }
-                                                                    });
-                                                                }}
-                                                            />
-                                                            <span style={{ fontSize: '13px' }}>개</span>
+                                                {selectedJob.items
+                                                    .slice()
+                                                    .sort((a, b) => {
+                                                        if (a.side === 'LH') return -1;
+                                                        if (b.side === 'LH') return 1;
+                                                        return 0;
+                                                    })
+                                                    .map(item => (
+                                                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                            <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{item.side}</span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <input
+                                                                    type="number"
+                                                                    className="input-field"
+                                                                    style={{ width: '80px', textAlign: 'right' }}
+                                                                    value={editData.quantities[item.id]}
+                                                                    onChange={e => {
+                                                                        const val = parseInt(e.target.value) || 0;
+                                                                        setEditData({
+                                                                            ...editData,
+                                                                            quantities: {
+                                                                                ...editData.quantities,
+                                                                                [item.id]: val
+                                                                            }
+                                                                        });
+                                                                    }}
+                                                                />
+                                                                <span style={{ fontSize: '13px' }}>개</span>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    ))}
                                             </div>
                                         </div>
                                     ) : (
@@ -123,7 +222,25 @@ export default function ProcessModals({
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                         <div>
                                             <div className="code">{selectedJob.code}</div>
-                                            <h1>{selectedJob.model}</h1>
+                                            <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <h1 style={{ margin: 0 }}>{selectedJob.model}</h1>
+                                                <button
+                                                    onClick={() => handleShowProductInfo(selectedJob.code)}
+                                                    className="btn-primary"
+                                                    style={{
+                                                        fontSize: '14px',
+                                                        padding: '6px 12px',
+                                                        borderRadius: '8px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        height: '36px'
+                                                    }}
+                                                    disabled={loadingProduct}
+                                                >
+                                                    {loadingProduct ? '로딩중...' : <>📷 품목 정보</>}
+                                                </button>
+                                            </div>
                                         </div>
                                         {!isReadOnly && <button onClick={() => startEdit(selectedJob)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px' }}>편집</button>}
                                     </div>
@@ -171,20 +288,121 @@ export default function ProcessModals({
                 </div>
             )}
 
+            {/* Product Info Modal (New) */}
+            {productInfo && (
+                <div className="modal-overlay" onClick={() => setProductInfo(null)}>
+                    <div className="card modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+                        <div className="modal-header">
+                            <h3>품목 상세 정보</h3>
+                            <X size={24} onClick={() => setProductInfo(null)} className="cursor-pointer" />
+                        </div>
+                        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                            {productInfo.이미지 ? (
+                                <img
+                                    src={productInfo.이미지}
+                                    alt={productInfo.model}
+                                    style={{
+                                        maxWidth: '100%',
+                                        borderRadius: '12px',
+                                        border: '1px solid var(--glass-border)',
+                                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                                    }}
+                                />
+                            ) : (
+                                <div style={{
+                                    padding: '60px',
+                                    background: 'rgba(255,255,255,0.03)',
+                                    borderRadius: '12px',
+                                    color: 'var(--text-muted)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: '12px'
+                                }}>
+                                    <AlertCircle size={48} style={{ opacity: 0.5 }} />
+                                    <span>이미지가 등록되지 않았습니다</span>
+                                </div>
+                            )}
+                        </div>
+                        <div className="info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div className="form-item">
+                                <label style={{ color: 'var(--primary)', fontWeight: '600' }}>하우징</label>
+                                <div className="input-field disabled" style={{ fontSize: '16px', fontWeight: '500' }}>
+                                    {productInfo.하우징 || '-'}
+                                </div>
+                            </div>
+                            <div className="form-item">
+                                <label style={{ color: 'var(--primary)', fontWeight: '600' }}>캐리어</label>
+                                <div className="input-field disabled" style={{ fontSize: '16px', fontWeight: '500' }}>
+                                    {productInfo.캐리어 || '-'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Confirm Modal */}
             {confirmTarget && (
                 <div className="modal-overlay">
                     <div className="card modal-small" onClick={e => e.stopPropagation()}>
                         <h3>{confirmTarget.label} 확인</h3>
-                        <p>{confirmTarget.question}</p>
+                        <p style={{ marginBottom: confirmTarget.stageKey === 'plating_release' ? '8px' : '16px' }}>
+                            {confirmTarget.question}
+                        </p>
+
+                        {/* 도금출고 이동 시 수량 확인/수정 UI */}
+                        {confirmTarget.stageKey === 'plating_release' && (
+                            <div className="quantity-confirm-box" style={{ marginBottom: '16px', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                    최종 출고 수량을 확인(수정)해주세요.
+                                </div>
+                                {jobs.filter(j => confirmTarget.jobIds.includes(j.id))
+                                    .sort((a, b) => {
+                                        // LH 먼저 표시
+                                        if (a.side === 'LH') return -1;
+                                        if (b.side === 'LH') return 1;
+                                        return 0;
+                                    })
+                                    .map(job => (
+                                        <div key={job.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                            <span style={{ fontSize: '14px', flex: 1 }}>
+                                                {job.model} {job.side && <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{job.side}</span>}
+                                            </span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <input
+                                                    type="number"
+                                                    value={confirmQuantities[job.id] !== undefined ? confirmQuantities[job.id] : (job.quantity || 1)}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value) || 0;
+                                                        setConfirmQuantities(prev => ({ ...prev, [job.id]: val }));
+                                                    }}
+                                                    onFocus={(e) => e.target.select()}
+                                                    className="input-field"
+                                                    style={{ width: '80px', textAlign: 'right', height: '32px' }}
+                                                    min="1"
+                                                />
+                                                <span style={{ fontSize: '13px' }}>개</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+
                         <StaffSelector
                             selectedStaff={selectedStaff}
                             setSelectedStaff={setSelectedStaff}
                             staffNames={staffNames}
                         />
                         <div className="modal-actions">
-                            <button onClick={() => { setConfirmTarget(null); setSelectedStaff(''); }} className="btn btn-secondary">취소</button>
-                            <button onClick={handleConfirmStatus} disabled={!selectedStaff} className="btn btn-primary">확인 완료</button>
+                            <button onClick={() => { setConfirmTarget(null); setSelectedStaff(''); setConfirmQuantities({}); }} className="btn btn-secondary">취소</button>
+                            <button
+                                onClick={() => handleConfirmStatus(confirmQuantities)}
+                                disabled={!selectedStaff}
+                                className="btn btn-primary"
+                            >
+                                {confirmTarget.stageKey === 'plating_release' ? '수량 확정 및 이동' : '확인 완료'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -196,11 +414,54 @@ export default function ProcessModals({
                     <div className="card modal-small" onClick={e => e.stopPropagation()}>
                         <h3>일괄 처리: {batchConfirmTarget.label}</h3>
                         <p style={{ marginBottom: '4px' }}><strong>{batchConfirmTarget.count}건</strong>의 작업을 이동합니다.</p>
-                        <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '16px' }}>{batchConfirmTarget.question}</p>
+                        <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: batchConfirmTarget.stageKey === 'plating_release' ? '8px' : '16px' }}>
+                            {batchConfirmTarget.question}
+                        </p>
+
+                        {/* 일괄 처리 시에도 도금출고면 수량 수정 UI 표시 */}
+                        {batchConfirmTarget.stageKey === 'plating_release' && (
+                            <div className="quantity-confirm-box" style={{ marginBottom: '16px', maxHeight: '200px', overflowY: 'auto', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                                    각 항목의 수량을 최종 확정해주세요.
+                                </div>
+                                {batchConfirmTarget.groups.flatMap(g => g.items).map(job => (
+                                    <div key={job.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
+                                            <span style={{ fontSize: '14px' }}>
+                                                {job.model} {job.side && <span style={{ color: 'var(--primary)' }}>{job.side}</span>}
+                                            </span>
+                                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{job.code}</div>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <input
+                                                type="number"
+                                                value={confirmQuantities[job.id] !== undefined ? confirmQuantities[job.id] : (job.quantity || 1)}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value) || 0;
+                                                    setConfirmQuantities(prev => ({ ...prev, [job.id]: val }));
+                                                }}
+                                                onFocus={(e) => e.target.select()}
+                                                className="input-field"
+                                                style={{ width: '70px', textAlign: 'right', height: '30px' }}
+                                                min="1"
+                                            />
+                                            <span style={{ fontSize: '12px' }}>개</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <StaffSelector selectedStaff={selectedStaff} setSelectedStaff={setSelectedStaff} staffNames={staffNames} />
                         <div className="modal-actions">
-                            <button onClick={() => { setBatchConfirmTarget(null); setSelectedStaff(''); }} className="btn btn-secondary">취소</button>
-                            <button onClick={handleBatchConfirmStatus} disabled={!selectedStaff} className="btn btn-primary">일괄 처리</button>
+                            <button onClick={() => { setBatchConfirmTarget(null); setSelectedStaff(''); setConfirmQuantities({}); }} className="btn btn-secondary">취소</button>
+                            <button
+                                onClick={() => handleBatchConfirmStatus(confirmQuantities)}
+                                disabled={!selectedStaff}
+                                className="btn btn-primary"
+                            >
+                                {batchConfirmTarget.stageKey === 'plating_release' ? '일괄 확정 및 이동' : '일괄 처리'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -291,7 +552,11 @@ function HistoryList({ history, stages }) {
                         <div key={i} className="history-item">
                             <div className="timeline-line"><div className="timeline-dot"></div></div>
                             <div className="history-content">
-                                <div className="stage">{stages.find(s => s.key === h.stage)?.label} 완료</div>
+                                <div className="stage">
+                                    {h.stage === 'new_added'
+                                        ? '신규추가'
+                                        : `${stages.find(s => s.key === h.stage)?.label || h.stage} 완료`}
+                                </div>
                                 <div className="meta">{h.staffName} • {new Date(h.timestamp).toLocaleString()}</div>
                             </div>
                         </div>
@@ -376,6 +641,7 @@ function SplitModal({ job, onClose, onConfirm, stages, staffNames, initialStaff 
                                         max={maxQty}
                                         value={currentQty}
                                         onChange={e => handleQtyChange(item.id, e.target.value, maxQty)}
+                                        onFocus={(e) => e.target.select()}
                                     />
                                     <span style={{ fontSize: '13px' }}>개 이동</span>
                                 </div>

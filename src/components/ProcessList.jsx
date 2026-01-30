@@ -86,14 +86,23 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         jobsByStage[stage.key]?.length > 0
     );
 
-    const handleConfirmStatus = () => {
-        console.log('handleConfirmStatus called', { confirmTarget, selectedStaff });
+    const handleConfirmStatus = (quantities = {}) => {
+        console.log('handleConfirmStatus called', { confirmTarget, selectedStaff, quantities });
         if (confirmTarget && selectedStaff) {
             if (confirmTarget.stageKey === 'trash') {
                 onDeleteJob(confirmTarget.jobIds, selectedStaff);
             } else {
                 console.log('Calling onUpdateStatus with:', confirmTarget.jobIds, confirmTarget.stageKey, selectedStaff);
-                onUpdateStatus(confirmTarget.jobIds, confirmTarget.stageKey, selectedStaff);
+
+                // 수량 업데이트 맵 생성
+                const updatesMap = {};
+                if (quantities && Object.keys(quantities).length > 0) {
+                    Object.entries(quantities).forEach(([id, qty]) => {
+                        updatesMap[id] = { quantity: qty };
+                    });
+                }
+
+                onUpdateStatus(confirmTarget.jobIds, confirmTarget.stageKey, selectedStaff, updatesMap);
             }
             setConfirmTarget(null);
             setSelectedStaff('');
@@ -117,7 +126,7 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         }
     };
 
-    const handleBatchConfirmStatus = () => {
+    const handleBatchConfirmStatus = (quantities = {}) => {
         if (batchConfirmTarget && selectedStaff) {
             // 휴지통 이동인 경우
             if (batchConfirmTarget.stageKey === 'trash') {
@@ -132,6 +141,14 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                 });
                 onDeleteJob(allJobIds, selectedStaff);
             } else {
+                // 수량 업데이트 맵 생성 (일괄 처리용)
+                const updatesMap = {};
+                if (quantities && Object.keys(quantities).length > 0) {
+                    Object.entries(quantities).forEach(([id, qty]) => {
+                        updatesMap[id] = { quantity: qty };
+                    });
+                }
+
                 // 일반 공정 이동 logic
                 batchConfirmTarget.groups.forEach(group => {
                     // Fix: Batch update should also check effective group stage, not just first item
@@ -165,7 +182,9 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
 
                     const nextStage = getNextStage(mockJob);
                     if (nextStage) {
-                        onUpdateStatus(group.items.map(j => j.id), nextStage.key, selectedStaff);
+                        // 여기서는 group 단위로 순회하므로, group 내의 아이템들에 대한 updatesMap은
+                        // 상위에서 정의한 updatesMap을 그대로 넘겨도 됨 (ID 매칭되므로)
+                        onUpdateStatus(group.items.map(j => j.id), nextStage.key, selectedStaff, updatesMap);
                     }
                 });
             }
@@ -384,7 +403,19 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
     try {
         return (
             <div className="animate-fade-in" style={{ paddingBottom: selectedGroups.size > 0 ? '100px' : '0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '16px',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 10,
+                    backgroundColor: 'var(--bg-color)',
+                    paddingTop: '16px',
+                    paddingBottom: '8px',
+                    marginTop: '-16px' // compensate for top padding
+                }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                         <h1 style={{ margin: 0, whiteSpace: 'nowrap' }}>공정 관리</h1>
                         {/* 검색창 추가 */}

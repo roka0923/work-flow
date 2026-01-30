@@ -1,0 +1,22 @@
+{
+    "rules": {
+        ".read": false,
+        ".write": false,
+        "processes": {
+            ".read": "auth != null",
+            ".write": "auth != null",
+            ".indexOn": [
+                "updatedAt",
+                "groupId",
+                "id"
+            ]
+        },
+        "deleted_processes": {
+            ".read": "auth != null",
+            ".write": "auth != null",
+            ".indexOn": [
+                "deletedAt"
+            ]
+        }
+    }
+}
