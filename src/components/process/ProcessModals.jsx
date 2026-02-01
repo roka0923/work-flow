@@ -175,8 +175,10 @@ export default function ProcessModals({
                                                 {selectedJob.items
                                                     .slice()
                                                     .sort((a, b) => {
-                                                        if (a.side === 'LH') return -1;
-                                                        if (b.side === 'LH') return 1;
+                                                        const sideA = (a.side || '').toUpperCase();
+                                                        const sideB = (b.side || '').toUpperCase();
+                                                        if (sideA === 'LH' && sideB !== 'LH') return -1;
+                                                        if (sideB === 'LH' && sideA !== 'LH') return 1;
                                                         return 0;
                                                     })
                                                     .map(item => (
@@ -359,15 +361,16 @@ export default function ProcessModals({
                                 </div>
                                 {jobs.filter(j => confirmTarget.jobIds.includes(j.id))
                                     .sort((a, b) => {
-                                        // LH 먼저 표시
-                                        if (a.side === 'LH') return -1;
-                                        if (b.side === 'LH') return 1;
+                                        const sideA = (a.side || '').toUpperCase();
+                                        const sideB = (b.side || '').toUpperCase();
+                                        if (sideA === 'LH' && sideB !== 'LH') return -1;
+                                        if (sideB === 'LH' && sideA !== 'LH') return 1;
                                         return 0;
                                     })
                                     .map(job => (
                                         <div key={job.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                                             <span style={{ fontSize: '14px', flex: 1 }}>
-                                                {job.model} {job.side && <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{job.side}</span>}
+                                                {(job.model || '').replace(/\s*(LH|RH)\s*$/i, '').trim()} {job.side && <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{job.side}</span>}
                                             </span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                 <input
@@ -424,31 +427,42 @@ export default function ProcessModals({
                                 <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>
                                     각 항목의 수량을 최종 확정해주세요.
                                 </div>
-                                {batchConfirmTarget.groups.flatMap(g => g.items).map(job => (
-                                    <div key={job.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                        <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
-                                            <span style={{ fontSize: '14px' }}>
-                                                {job.model} {job.side && <span style={{ color: 'var(--primary)' }}>{job.side}</span>}
-                                            </span>
-                                            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{job.code}</div>
+                                {batchConfirmTarget.groups.flatMap(g => g.items)
+                                    .sort((a, b) => {
+                                        // 1차 정렬: 품목코드/모델명 (같은 품목끼리 묶기)
+                                        if (a.code !== b.code) return a.code.localeCompare(b.code);
+                                        // 2차 정렬: LH -> RH
+                                        const sideA = (a.side || '').toUpperCase();
+                                        const sideB = (b.side || '').toUpperCase();
+                                        if (sideA === 'LH' && sideB !== 'LH') return -1;
+                                        if (sideB === 'LH' && sideA !== 'LH') return 1;
+                                        return 0;
+                                    })
+                                    .map(job => (
+                                        <div key={job.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                            <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '8px' }}>
+                                                <span style={{ fontSize: '14px' }}>
+                                                    {(job.model || '').replace(/\s*(LH|RH)\s*$/i, '').trim()} {job.side && <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{job.side}</span>}
+                                                </span>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{job.code}</div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <input
+                                                    type="number"
+                                                    value={confirmQuantities[job.id] !== undefined ? confirmQuantities[job.id] : (job.quantity || 1)}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value) || 0;
+                                                        setConfirmQuantities(prev => ({ ...prev, [job.id]: val }));
+                                                    }}
+                                                    onFocus={(e) => e.target.select()}
+                                                    className="input-field"
+                                                    style={{ width: '70px', textAlign: 'right', height: '30px' }}
+                                                    min="1"
+                                                />
+                                                <span style={{ fontSize: '12px' }}>개</span>
+                                            </div>
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <input
-                                                type="number"
-                                                value={confirmQuantities[job.id] !== undefined ? confirmQuantities[job.id] : (job.quantity || 1)}
-                                                onChange={(e) => {
-                                                    const val = parseInt(e.target.value) || 0;
-                                                    setConfirmQuantities(prev => ({ ...prev, [job.id]: val }));
-                                                }}
-                                                onFocus={(e) => e.target.select()}
-                                                className="input-field"
-                                                style={{ width: '70px', textAlign: 'right', height: '30px' }}
-                                                min="1"
-                                            />
-                                            <span style={{ fontSize: '12px' }}>개</span>
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         )}
 
@@ -619,35 +633,43 @@ function SplitModal({ job, onClose, onConfirm, stages, staffNames, initialStaff 
 
                 <div className="form-item">
                     <label>이동할 수량</label>
-                    {items.map(item => {
-                        const maxQty = item.quantity || 1;
-                        const currentQty = quantities[item.id] !== undefined ? quantities[item.id] : 0;
-                        const sideLabel = item.side ? `(${item.side})` : '';
+                    {items
+                        .sort((a, b) => {
+                            const sideA = (a.side || '').toUpperCase();
+                            const sideB = (b.side || '').toUpperCase();
+                            if (sideA === 'LH' && sideB !== 'LH') return -1;
+                            if (sideB === 'LH' && sideA !== 'LH') return 1;
+                            return 0;
+                        })
+                        .map(item => {
+                            const maxQty = item.quantity || 1;
+                            const currentQty = quantities[item.id] !== undefined ? quantities[item.id] : 0;
+                            const sideLabel = item.side ? `(${item.side})` : '';
 
-                        return (
-                            <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', background: 'var(--glass-bg)', padding: '8px', borderRadius: '8px' }}>
-                                <span style={{ fontSize: '14px' }}>
-                                    {item.model || job.model} <span style={{ color: 'var(--primary)' }}>{sideLabel}</span>
-                                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '6px' }}>
-                                        (잔여: {maxQty}개)
+                            return (
+                                <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', background: 'var(--glass-bg)', padding: '8px', borderRadius: '8px' }}>
+                                    <span style={{ fontSize: '14px' }}>
+                                        {(item.model || job.model || '').replace(/\s*(LH|RH)\s*$/i, '').trim()} <span style={{ color: 'var(--primary)' }}>{sideLabel}</span>
+                                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '6px' }}>
+                                            (잔여: {maxQty}개)
+                                        </span>
                                     </span>
-                                </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <input
-                                        type="number"
-                                        className="input-field"
-                                        style={{ width: '80px', textAlign: 'right' }}
-                                        min="0"
-                                        max={maxQty}
-                                        value={currentQty}
-                                        onChange={e => handleQtyChange(item.id, e.target.value, maxQty)}
-                                        onFocus={(e) => e.target.select()}
-                                    />
-                                    <span style={{ fontSize: '13px' }}>개 이동</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <input
+                                            type="number"
+                                            className="input-field"
+                                            style={{ width: '80px', textAlign: 'right' }}
+                                            min="0"
+                                            max={maxQty}
+                                            value={currentQty}
+                                            onChange={e => handleQtyChange(item.id, e.target.value, maxQty)}
+                                            onFocus={(e) => e.target.select()}
+                                        />
+                                        <span style={{ fontSize: '13px' }}>개 이동</span>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
                 </div>
 
                 <div className="staff-selector" style={{ marginTop: '12px' }}>

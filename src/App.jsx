@@ -162,10 +162,13 @@ function AppContent() {
         </div>
     );
 
-    if (error) return (
+    if (error || (!db && isAuthReady)) return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', color: 'var(--danger-color)', textAlign: 'center', padding: '2rem' }}>
-            <h2>연결 오류</h2>
-            <p>{error}</p>
+            <h2>⚠️ 설정 오류</h2>
+            <p>{error || "Firebase 환경 변수(.env)가 설정되지 않았습니다."}</p>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                프로젝트 루트의 .env 파일을 확인해 주세요.
+            </p>
             <button onClick={() => window.location.reload()} style={{ marginTop: '1rem', padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--primary-color)', color: 'white', border: 'none' }}>다시 시도</button>
         </div>
     );

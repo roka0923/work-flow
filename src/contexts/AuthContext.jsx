@@ -34,6 +34,8 @@ export function AuthProvider({ children }) {
 
     // 글로벌 권한 설정 실시간 수신
     useEffect(() => {
+        if (!db) return;
+
         const permRef = doc(db, "settings", "permissions");
         const unsubscribe = onSnapshot(permRef, (docSnap) => {
             if (docSnap.exists()) {
@@ -54,11 +56,20 @@ export function AuthProvider({ children }) {
                     viewer: { canRequest: false, canDelete: false, canSettings: false }
                 });
             }
+        }, (error) => {
+            console.error("Permissions Sync Error:", error);
         });
         return () => unsubscribe();
     }, []);
 
     useEffect(() => {
+        if (!auth || !db) {
+            console.warn("⚠️ Firebase 서비스가 초기화되지 않아 인증 리스너를 건너뜁니다.");
+            setIsAuthReady(true);
+            setLoading(false);
+            return;
+        }
+
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             setLoading(true);
             try {
@@ -79,7 +90,6 @@ export function AuthProvider({ children }) {
                             role: 'worker',
                             createdAt: serverTimestamp()
                         };
-                        // 여기서 권한 문제 등으로 실패할 수 있으므로 개별 try-catch 또는 상위 catch로 유도
                         await setDoc(userRef, newUser);
                         setUserRole('worker');
                     }
@@ -91,9 +101,8 @@ export function AuthProvider({ children }) {
                 }
             } catch (error) {
                 console.error("Auth Listener Error:", error);
-                // 에러 발생 시에도 최소한 로그아웃 상태이거나 기본 사용자 정보는 초기화
                 setCurrentUser(user || null);
-                setUserRole('worker'); // 에러 시 기본 권한이라도 부여하거나, 아예 null
+                setUserRole('worker');
             } finally {
                 setIsAuthReady(true);
                 setLoading(false);

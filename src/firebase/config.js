@@ -34,15 +34,17 @@ let app;
 try {
     // initialize Firebase
     app = initializeApp(firebaseConfig);
+    console.log("✅ Firebase가 성공적으로 초기화되었습니다.");
 } catch (error) {
     console.error("❌ Firebase 초기화 실패:", error);
-    throw new Error("Firebase 초기화 중 오류가 발생했습니다. 환경 변수 설정을 확인해 주세요.");
+    // 즉시 throw하지 않고 앱이 실행될 기회를 줌 (에러 화면 표시용)
+    app = null; 
 }
 
 // initialize Services
-export const rtdb = getDatabase(app);
-export const auth = getAuth(app);
-export const storage = getStorage(app);
-export const db = getFirestore(app);
+export const rtdb = app ? getDatabase(app) : null;
+export const auth = app ? getAuth(app) : null;
+export const storage = app ? getStorage(app) : null;
+export const db = app ? getFirestore(app) : null;
 
 export default app;
