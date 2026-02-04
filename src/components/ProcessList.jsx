@@ -4,12 +4,14 @@ import JobCard from './process/JobCard';
 import BatchActionBar from './process/BatchActionBar';
 import ProcessModals from './process/ProcessModals';
 import { useAuth } from '../contexts/AuthContext';
+import { useProducts } from '../hooks/useProducts';
 import { statusKeys as STACK_STATUS_KEYS, STAGES, getJobStage, groupJobs } from '../utils/statusUtils';
 
 const statusKeys = STACK_STATUS_KEYS;
 
 export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDeleteJob, onEditJob, onAddJob, onPrefillRequest, onSplitJob, filter, onClearFilter }) {
     const { currentUser, userRole } = useAuth();
+    const { products } = useProducts();
     const isReadOnly = userRole === 'viewer';
 
     const [selectedJob, setSelectedJob] = useState(null);
@@ -400,6 +402,57 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
         setSelectedGroups(newSelected);
     };
 
+    // 피스톤 수량 합계 및 품목별 목록 계산 (조립대기 단계 한정)
+    const getPistonSummary = () => {
+        if (selectedGroups.size === 0) return null;
+
+        const pistonMap = {};
+        const selectedGroupData = groupedJobs.filter(g => selectedGroups.has(g.key));
+
+        selectedGroupData.forEach(group => {
+            // 조립대기 단계가 아니면 합산에서 제외
+            if (group.currentStage !== 'assembly_wait') return;
+
+            group.items.forEach(item => {
+                const product = products.find(p => p.code === item.code);
+                if (!product) return;
+
+                const type = (product['타입'] || product.type || '').toUpperCase();
+                const multiplier = type.includes('2P') ? 2 : 1;
+
+                Object.keys(product).forEach(key => {
+                    if (key.includes('피스톤') && product[key]) {
+                        const pistonSize = product[key].toString().trim();
+                        if (!pistonMap[pistonSize]) {
+                            pistonMap[pistonSize] = { total: 0, models: {} };
+                        }
+
+                        // 피스톤 총 수량 (수량 * 1P/2P)
+                        pistonMap[pistonSize].total += (item.quantity * multiplier);
+
+                        // 어떤 품목이 몇 개인지 (L/R 구분 없이 원본 수량 합산)
+                        // LH, RH 표기 제거 (정규식 사용)
+                        let modelName = product.model || item.model || item.code;
+                        modelName = modelName.replace(/\s*(LH|RH)\s*$/i, '').trim();
+
+                        pistonMap[pistonSize].models[modelName] = (pistonMap[pistonSize].models[modelName] || 0) + item.quantity;
+                    }
+                });
+            });
+        });
+
+        if (Object.keys(pistonMap).length === 0) return null;
+
+        return Object.entries(pistonMap)
+            .map(([size, data]) => {
+                const modelList = Object.entries(data.models)
+                    .map(([name, qty]) => `${name} ${qty}개`)
+                    .join(', ');
+                return `${size}: ${data.total}개 (${modelList})`;
+            })
+            .join('\n');
+    };
+
     try {
         return (
             <div className="animate-fade-in" style={{ paddingBottom: selectedGroups.size > 0 ? '100px' : '0' }}>
@@ -409,12 +462,15 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                     alignItems: 'center',
                     marginBottom: '16px',
                     position: 'sticky',
-                    top: 0,
-                    zIndex: 10,
+                    top: '-16px', // main-content padding-top 보정
+                    zIndex: 100,
                     backgroundColor: 'var(--bg-color)',
-                    paddingTop: '16px',
-                    paddingBottom: '8px',
-                    marginTop: '-16px' // compensate for top padding
+                    paddingTop: '20px',
+                    paddingBottom: '12px',
+                    borderBottom: '1px solid var(--glass-border)',
+                    margin: '-20px -20px 24px -20px', // layout padding 보정
+                    paddingLeft: '20px',
+                    paddingRight: '20px'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                         <h1 style={{ margin: 0, whiteSpace: 'nowrap' }}>공정 관리</h1>
@@ -474,11 +530,27 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                     ) : (
                         stagesToShow.map(stage => (
                             <div key={stage.key}>
-                                <div className="section-header" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                <div className="section-header" style={{
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    borderLeftColor: stage.color, // 공정별 색상 적용
+                                    background: `linear-gradient(to right, ${stage.color}15, transparent)`, // 미세한 강조 효과
+                                    position: 'sticky',
+                                    top: '48px', // 메인 헤더 아래에 고정 (메인 헤더 높이 보정)
+                                    zIndex: 50,
+                                    backgroundColor: 'var(--bg-color)',
+                                    marginBottom: '12px',
+                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                                }}>
                                     <div style={{ display: 'flex', alignItems: 'center', flex: 1 }} onClick={() => toggleCollapse(stage.key)}>
                                         <span style={{ marginRight: '8px', transform: collapsedStages.has(stage.key) ? 'rotate(-90deg)' : 'rotate(0deg)', transition: '0.2s' }}>▼</span>
                                         <span>{stage.label}</span>
-                                        <span className="badge" style={{ marginLeft: '8px' }}>{jobsByStage[stage.key].length}건</span>
+                                        <span className="badge" style={{
+                                            marginLeft: '8px',
+                                            backgroundColor: stage.color, // 공정별 색상 적용
+                                            color: '#000'
+                                        }}>{jobsByStage[stage.key].length}건</span>
                                     </div>
                                     {!isReadOnly && (
                                         <input
@@ -508,20 +580,23 @@ export default function ProcessList({ jobs, staffNames, onUpdateStatus, onDelete
                 </div>
 
                 {!isReadOnly && (
-                    <BatchActionBar selectedCount={selectedGroups.size} onAction={() => {
-                        const groups = groupedJobs.filter(g => selectedGroups.has(g.key));
-                        const validGroups = groups.filter(g => getNextStage(g.items[0]));
-                        if (validGroups.length > 0) {
-                            const nextStage = getNextStage(validGroups[0].items[0]);
-                            setBatchConfirmTarget({
-                                groups: validGroups,
-                                stageKey: nextStage.key,
-                                label: nextStage.label,
-                                question: nextStage.question,
-                                count: validGroups.length
-                            });
-                        }
-                    }} />
+                    <BatchActionBar
+                        selectedCount={selectedGroups.size}
+                        pistonSummary={getPistonSummary()}
+                        onAction={() => {
+                            const groups = groupedJobs.filter(g => selectedGroups.has(g.key));
+                            const validGroups = groups.filter(g => getNextStage(g.items[0]));
+                            if (validGroups.length > 0) {
+                                const nextStage = getNextStage(validGroups[0].items[0]);
+                                setBatchConfirmTarget({
+                                    groups: validGroups,
+                                    stageKey: nextStage.key,
+                                    label: nextStage.label,
+                                    question: nextStage.question,
+                                    count: validGroups.length
+                                });
+                            }
+                        }} />
                 )}
 
                 <ProcessModals

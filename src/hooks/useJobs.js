@@ -18,7 +18,7 @@ export function useJobs() {
 
     // Read jobs from Firebase (Only when authenticated)
     useEffect(() => {
-        if (!currentUser) {
+        if (!currentUser || !rtdb) {
             setLoading(false);
             setJobs([]);
             setDeletedJobs([]);
@@ -31,6 +31,7 @@ export function useJobs() {
 
         const jobsRef = ref(rtdb, 'processes');
         const unsubscribe = onValue(jobsRef, (snapshot) => {
+            // ... (rest of the logic remains the same)
             try {
                 const data = snapshot.val();
                 if (data) {
@@ -544,7 +545,6 @@ export function useJobs() {
         restoreJob,
         permanentDeleteJob,
         clearDeletedJobs,
-        resetJobs,
         resetJobs,
         updateJobStatus,
         splitAndMoveJob

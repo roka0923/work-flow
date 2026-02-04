@@ -3,8 +3,8 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './styles/index.css'
 
-// Service Worker 등록 (PWA Support)
-if ('serviceWorker' in navigator) {
+// Service Worker 등록 (PWA Support) - 로컬 호스트 제외
+if ('serviceWorker' in navigator && !window.location.hostname.includes('localhost')) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
             .then(registration => {

@@ -1,5 +1,7 @@
 const CACHE_NAME = 'daehansa-workflow-v2';
 const STATIC_ASSETS = [
+    '/',
+    '/index.html',
     '/manifest.json',
     '/logo.png'
 ];
@@ -47,7 +49,7 @@ self.addEventListener('fetch', (event) => {
     if (url.pathname === '/' || url.pathname === '/index.html') {
         event.respondWith(
             fetch(event.request)
-                .catch(() => caches.match('/index.html')) // 오프라인일 때만 캐시 사용
+                .catch(() => caches.match('/index.html') || new Response('Offline', { status: 503 })) // 오프라인일 때만 캐시 사용
         );
         return;
     }
@@ -80,7 +82,7 @@ self.addEventListener('fetch', (event) => {
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                 }
                 return networkResponse;
-            });
+            }).catch(() => cached);
             return cached || fetchPromise;
         })
     );

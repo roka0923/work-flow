@@ -172,22 +172,22 @@ export default function JobCard({
                                         width: '36px',
                                         height: '36px',
                                         borderRadius: '50%',
-                                        background: isDone ? 'var(--primary)' : 'var(--glass-bg)',
-                                        border: `2px solid ${isDone ? 'var(--primary)' : 'var(--glass-border)'}`,
+                                        background: isDone ? stage.color : 'var(--glass-bg)',
+                                        border: `2px solid ${isDone ? stage.color : 'var(--glass-border)'}`,
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         color: isDone ? '#000' : 'var(--text-muted)',
                                         transition: '0.2s',
                                         cursor: !isReadOnly && canCheck ? 'pointer' : 'default',
-                                        boxShadow: isDone ? '0 0 10px var(--primary-glow)' : 'none'
+                                        boxShadow: isDone ? `0 0 10px ${stage.color}40` : 'none'
                                     }}>
                                         {isDone ? <CheckCircle2 size={20} /> : <Circle size={20} />}
                                     </div>
                                     <span style={{
                                         fontSize: '9px',
                                         fontWeight: '600',
-                                        color: isDone ? 'var(--primary)' : 'var(--text-muted)',
+                                        color: isDone ? stage.color : 'var(--text-muted)',
                                         textAlign: 'center'
                                     }}>
                                         {stage.label}
